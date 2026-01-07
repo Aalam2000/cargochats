@@ -1,0 +1,15 @@
+fastapi==0.128.0
+uvicorn[standard]==0.40.0
+pydantic-settings==2.12.0
+python-dotenv==1.2.1
+
+SQLAlchemy==2.0.45
+asyncpg==0.31.0
+alembic==1.17.2
+
+jinja2==3.1.6
+apscheduler==3.11.2
+
+
+pydantic~=2.12.5
+pathspec~=1.0.1
