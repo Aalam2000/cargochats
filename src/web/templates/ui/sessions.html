@@ -1,0 +1,18 @@
+{% extends "base.html" %}
+{% block content %}
+<h2>Sessions</h2>
+<div class="box">
+  <div class="muted">company_id = {{ company_id }}, resource_id = {{ resource_id }}</div>
+  <p>TODO: list/create sessions.</p>
+  <table>
+    <tr><th>ID</th><th>code</th><th>title</th></tr>
+    {% for s in items %}
+      <tr>
+        <td><a href="/ui/sessions/{{ s.id }}?company_id={{ company_id }}">{{ s.id }}</a></td>
+        <td>{{ s.code }}</td>
+        <td>{{ s.title }}</td>
+      </tr>
+    {% endfor %}
+  </table>
+</div>
+{% endblock %}

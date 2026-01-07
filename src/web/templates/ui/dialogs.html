@@ -1,0 +1,18 @@
+{% extends "base.html" %}
+{% block content %}
+<h2>Dialogs</h2>
+<div class="box">
+  <div class="muted">company_id = {{ company_id }}</div>
+  <p>TODO: dialogs list.</p>
+  <table>
+    <tr><th>ID</th><th>status</th><th>title</th></tr>
+    {% for d in items %}
+      <tr>
+        <td><a href="/ui/dialogs/{{ d.id }}?company_id={{ company_id }}">{{ d.id }}</a></td>
+        <td>{{ d.status }}</td>
+        <td>{{ d.title }}</td>
+      </tr>
+    {% endfor %}
+  </table>
+</div>
+{% endblock %}

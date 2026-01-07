@@ -1,0 +1,19 @@
+{% extends "base.html" %}
+{% block content %}
+<h2>Events</h2>
+<div class="box">
+  <div class="muted">company_id = {{ company_id }}</div>
+  <p>TODO: events list with filters.</p>
+  <table>
+    <tr><th>ID</th><th>level</th><th>kind</th><th>message</th></tr>
+    {% for e in items %}
+      <tr>
+        <td>{{ e.id }}</td>
+        <td>{{ e.level }}</td>
+        <td>{{ e.kind }}</td>
+        <td>{{ e.message }}</td>
+      </tr>
+    {% endfor %}
+  </table>
+</div>
+{% endblock %}

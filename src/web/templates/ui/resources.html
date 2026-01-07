@@ -1,0 +1,19 @@
+{% extends "base.html" %}
+{% block content %}
+<h2>Resources</h2>
+<div class="box">
+  <div class="muted">company_id = {{ company_id }}</div>
+  <p>TODO: list/create resources.</p>
+  <table>
+    <tr><th>ID</th><th>kind</th><th>code</th><th>title</th></tr>
+    {% for r in items %}
+      <tr>
+        <td><a href="/ui/resources/{{ r.id }}?company_id={{ company_id }}">{{ r.id }}</a></td>
+        <td>{{ r.kind }}</td>
+        <td>{{ r.code }}</td>
+        <td>{{ r.title }}</td>
+      </tr>
+    {% endfor %}
+  </table>
+</div>
+{% endblock %}
