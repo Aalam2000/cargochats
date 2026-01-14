@@ -1,0 +1,42 @@
+name: deploy
+
+on:
+  push:
+    branches:
+      - master
+  workflow_dispatch: {}
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: "Start ssh-agent and add key"
+        uses: webfactory/ssh-agent@v0.9.0
+        with:
+          ssh-private-key: ${{ secrets.SSH_PRIVATE_KEY }}
+
+      - name: "Add server to known_hosts"
+        run: |
+          mkdir -p ~/.ssh
+          ssh-keyscan -H 185.169.54.182 >> ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/known_hosts
+
+      - name: Install rsync
+        run: sudo apt-get update && sudo apt-get install -y rsync
+
+      - name: Sync repo to server (/var/www/cargochats)
+        run: |
+          rsync -az --delete \
+            --exclude '.git/' \
+            --exclude 'tmp/' \
+            --exclude '.venv/' \
+            ./ bona@185.169.54.182:/var/www/cargochats/
+
+      - name: Docker compose up (prod)
+        run: |
+          ssh -o BatchMode=yes bona@185.169.54.182 \
+            "cd /var/www/cargochats && docker compose -f docker-compose.prod.yml up -d --build --remove-orphans && docker ps --format 'table {{.Names}}\t{{.Status}}' | head -n 20"
