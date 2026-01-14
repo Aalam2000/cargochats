@@ -29,4 +29,4 @@ jobs:
 
       - name: "SSH test"
         run: |
-          ssh -o BatchMode=yes -o IdentitiesOnly=yes bona@185.169.54.182 "whoami && hostname && pwd"
+          ssh -o BatchMode=yes bona@185.169.54.182 "whoami && hostname && pwd"
