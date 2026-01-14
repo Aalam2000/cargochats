@@ -1,25 +1,97 @@
 name: ssh-check
+
 on:
+  push:
+    branches: ["master"]
   workflow_dispatch:
 
 jobs:
   ssh:
     runs-on: ubuntu-latest
+
+    env:
+      SERVER_HOST: 185.169.54.182
+      SERVER_PORT: "22"
+      SERVER_USER: bona
+
     steps:
-      - name: Start ssh-agent and add key
+      - name: Start ssh-agent and add private key from Secrets
         uses: webfactory/ssh-agent@v0.9.0
         with:
           ssh-private-key: ${{ secrets.SSH_PRIVATE_KEY }}
 
-      - name: Debug agent keys
-        run: ssh-add -l
-
-      - name: Add server to known_hosts
+      - name: Report: key loaded into agent
+        shell: bash
         run: |
+          echo "::group::ssh-agent identities"
+          if ssh-add -l; then
+            echo "::notice::ssh-agent: ключ(и) загружены (см. fingerprints выше)."
+          else
+            echo "::error::ssh-agent: ключ НЕ загружен. Проверь Secrets -> SSH_PRIVATE_KEY (private key в формате OpenSSH, целиком)."
+            exit 1
+          fi
+          echo "::endgroup::"
+
+      - name: Report: TCP connectivity to server:22
+        shell: bash
+        run: |
+          echo "::group::tcp check"
+          if timeout 5 bash -lc "cat < /dev/null > /dev/tcp/${SERVER_HOST}/${SERVER_PORT}"; then
+            echo "::notice::TCP ${SERVER_HOST}:${SERVER_PORT} доступен."
+          else
+            echo "::error::TCP ${SERVER_HOST}:${SERVER_PORT} недоступен (NAT/Firewall/UFW/OPNsense)."
+            exit 1
+          fi
+          echo "::endgroup::"
+
+      - name: Add server host key to known_hosts
+        shell: bash
+        run: |
+          echo "::group::known_hosts"
           mkdir -p ~/.ssh
-          ssh-keyscan -H 185.169.54.182 >> ~/.ssh/known_hosts
+          ssh-keyscan -p "${SERVER_PORT}" -H "${SERVER_HOST}" >> ~/.ssh/known_hosts
           chmod 600 ~/.ssh/known_hosts
+          echo "::notice::Host key добавлен в known_hosts."
+          echo "::endgroup::"
 
-      - name: SSH test
+      - name: SSH test (whoami/hostname/pwd)
+        shell: bash
         run: |
-          ssh -o IdentitiesOnly=yes bona@185.169.54.182 "whoami && hostname && pwd"
+          echo "::group::ssh test"
+          set +e
+          OUT="$(ssh \
+            -p "${SERVER_PORT}" \
+            -o BatchMode=yes \
+            -o IdentitiesOnly=yes \
+            -o PreferredAuthentications=publickey \
+            -o PubkeyAuthentication=yes \
+            -o PasswordAuthentication=no \
+            -o KbdInteractiveAuthentication=no \
+            -o ConnectTimeout=10 \
+            "${SERVER_USER}@${SERVER_HOST}" \
+            "whoami && hostname && pwd" 2>&1)"
+          CODE=$?
+          echo "$OUT"
+          echo "::endgroup::"
+
+          if [ $CODE -eq 0 ]; then
+            echo "::notice::SUCCESS: GitHub Actions по SSH вошёл на сервер как ${SERVER_USER}."
+            exit 0
+          fi
+
+          echo "::error::FAIL: SSH вход не удался (exit code ${CODE})."
+          echo "::group::diagnostic hints"
+          if echo "$OUT" | grep -q "Permission denied (publickey)"; then
+            echo "Причина почти всегда одна из этих:"
+            echo "1) public key НЕ совпадает с private key из Secrets (на сервер попал другой ключ)."
+            echo "2) public key на сервере вставлен с переносами/обрезан (authorized_keys должен содержать ключ одной строкой)."
+            echo "3) ключ не добавлен в /home/${SERVER_USER}/.ssh/authorized_keys именно для пользователя ${SERVER_USER}."
+            echo ""
+            echo "Что проверять на сервере (под ${SERVER_USER}):"
+            echo "  tail -n 5 ~/.ssh/authorized_keys"
+            echo "  grep -n \"github-actions\" ~/.ssh/authorized_keys"
+          else
+            echo "Смотри лог выше: там точная причина (timeout/hostkey/network и т.п.)."
+          fi
+          echo "::endgroup::"
+          exit 1
