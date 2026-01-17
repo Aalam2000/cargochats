@@ -35,6 +35,7 @@ jobs:
             --exclude 'tmp/' \
             --exclude '.venv/' \
             --exclude '.env.prod' \
+            --exclude 'var/' \
             ./ bona@185.169.54.182:/var/www/cargochats/
 
       - name: Docker compose up (prod)
