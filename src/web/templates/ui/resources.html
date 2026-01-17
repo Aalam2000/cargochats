@@ -1,19 +1,28 @@
-{% extends "base.html" %}
-{% block content %}
-<h2>Resources</h2>
-<div class="box">
-  <div class="muted">company_id = {{ company_id }}</div>
-  <p>TODO: list/create resources.</p>
-  <table>
-    <tr><th>ID</th><th>kind</th><th>code</th><th>title</th></tr>
-    {% for r in items %}
-      <tr>
-        <td><a href="/ui/resources/{{ r.id }}?company_id={{ company_id }}">{{ r.id }}</a></td>
-        <td>{{ r.kind }}</td>
-        <td>{{ r.code }}</td>
-        <td>{{ r.title }}</td>
-      </tr>
-    {% endfor %}
-  </table>
-</div>
-{% endblock %}
+<!doctype html>
+<html lang="ru">
+<head>
+    <meta charset="utf-8">
+    <title>Resources</title>
+    <link rel="stylesheet" href="/static/ui/resources.css">
+</head>
+<body>
+
+<h1>Ресурсы</h1>
+
+<table id="resources-table">
+    <thead>
+        <tr>
+            <th>ID</th>
+            <th>Тип</th>
+            <th>Название</th>
+            <th>Статус</th>
+        </tr>
+    </thead>
+    <tbody>
+        <!-- заполняется JS -->
+    </tbody>
+</table>
+
+<script src="/static/ui/resources.js"></script>
+</body>
+</html>

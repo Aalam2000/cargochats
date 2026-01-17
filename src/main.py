@@ -3,7 +3,7 @@ from __future__ import annotations
 import os
 import uvicorn
 from fastapi import FastAPI
-from fastapi.responses import HTMLResponse
+from fastapi.staticfiles import StaticFiles
 
 from src.api.routes_health import router as health_router
 from src.api.routes_chat import router as chat_router
@@ -12,36 +12,17 @@ from src.api.ui.router import router as ui_router
 from src.api.public.router import router as public_router
 
 
-def create_app() -> FastAPI:
-    app = FastAPI(title="CargoChats")
+app = FastAPI(title="CargoChats")
 
-    # --- базовая страница ---
-    @app.get("/", response_class=HTMLResponse)
-    def index():
-        return """
-        <!doctype html>
-        <html lang="ru">
-        <head>
-            <meta charset="utf-8">
-            <title>CargoChats</title>
-        </head>
-        <body>
-            <h1>CargoChats</h1>
-            <p>Сервис запущен.</p>
-            <p>UI и авторизация будут подключены на следующих шагах.</p>
-        </body>
-        </html>
-        """
+# статика
+app.mount("/static", StaticFiles(directory="src/web/static"), name="static")
 
-    app.include_router(health_router)
-    app.include_router(chat_router)
-    app.include_router(settings_router)
+# API
+app.include_router(health_router)
+app.include_router(chat_router)
+app.include_router(settings_router)
 
-    return app
-
-
-app = create_app()
-
+# UI / public
 app.include_router(ui_router)
 app.include_router(public_router)
 

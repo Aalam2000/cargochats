@@ -5,13 +5,28 @@ PURPOSE: UI router aggregator. Mounts HTML pages under /ui/* (admin settings & v
 
 from __future__ import annotations
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Request
+from fastapi.responses import HTMLResponse
+from fastapi.templating import Jinja2Templates
 
-from .resources import router as resources_router
-from .sessions import router as sessions_router
 from .dialogs import router as dialogs_router
 from .events import router as events_router
+from .resources import router as resources_router
+from .sessions import router as sessions_router
 from .widget_test import router as widget_test_router
+
+router = APIRouter(prefix="/ui", tags=["ui"])
+
+templates = Jinja2Templates(directory="src/web/templates")
+
+
+@router.get("/resources", response_class=HTMLResponse)
+def resources_page(request: Request):
+    return templates.TemplateResponse(
+        "ui/resources.html",
+        {"request": request},
+    )
+
 
 router = APIRouter(prefix="/ui", tags=["ui"])
 
