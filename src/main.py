@@ -3,6 +3,7 @@ from __future__ import annotations
 import os
 import uvicorn
 from fastapi import FastAPI
+from fastapi.responses import RedirectResponse
 from fastapi.staticfiles import StaticFiles
 
 from src.api.routes_health import router as health_router
@@ -16,6 +17,11 @@ app = FastAPI(title="CargoChats")
 
 # статика
 app.mount("/static", StaticFiles(directory="src/web/static"), name="static")
+
+# корень → ресурсы
+@app.get("/")
+def root():
+    return RedirectResponse(url="/ui/resources")
 
 # API
 app.include_router(health_router)
