@@ -1,8 +1,3 @@
-"""
-PATH: src/api/ui/router.py
-PURPOSE: UI router aggregator. Mounts HTML pages under /ui/* (admin settings & viewers).
-"""
-
 from __future__ import annotations
 
 from fastapi import APIRouter, Request
@@ -20,6 +15,8 @@ router = APIRouter(prefix="/ui", tags=["ui"])
 templates = Jinja2Templates(directory="src/web/templates")
 
 
+# ---------- HTML страницы ----------
+
 @router.get("/resources", response_class=HTMLResponse)
 def resources_page(request: Request):
     return templates.TemplateResponse(
@@ -28,9 +25,9 @@ def resources_page(request: Request):
     )
 
 
-router = APIRouter(prefix="/ui", tags=["ui"])
+# ---------- API / вложенные роуты ----------
 
-router.include_router(resources_router)
+router.include_router(resources_router, prefix="/resources")
 router.include_router(sessions_router)
 router.include_router(dialogs_router)
 router.include_router(events_router)
