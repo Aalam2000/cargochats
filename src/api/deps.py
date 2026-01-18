@@ -4,7 +4,8 @@ import time
 from typing import TypedDict
 
 import jwt
-from fastapi import Header, HTTPException, Query, Request, Response
+from fastapi import Header, HTTPException, Query, Request
+from fastapi.responses import RedirectResponse
 
 from src.config import get_settings
 
@@ -24,16 +25,8 @@ def require_api_key(
 
 def require_company_from_token(
     request: Request,
-    response: Response,
     token: str | None = Query(default=None),
-) -> CompanyContext:
-    """
-    Логика:
-    1. Если token пришёл в URL — используем его и кладём в cookie
-    2. Если token нет в URL — пробуем взять из cookie
-    3. Если нигде нет — 401
-    """
-
+):
     settings = get_settings()
 
     jwt_token = token or request.cookies.get("cargochats_token")
@@ -59,19 +52,23 @@ def require_company_from_token(
     if expires_at < int(time.time()):
         raise HTTPException(status_code=401, detail="Token expired")
 
-    # кладём в state
     request.state.company_id = company_id
     request.state.user_id = user_id
 
-    # если токен пришёл из URL — сохраняем в cookie
+    # ⬅️ КЛЮЧЕВОЕ МЕСТО
     if token:
+        response = RedirectResponse(
+            url=request.url.path,
+            status_code=302,
+        )
         response.set_cookie(
             key="cargochats_token",
             value=jwt_token,
             httponly=True,
-            samesite="lax",
             secure=True,
+            samesite="lax",
         )
+        return response
 
     return {
         "company_id": company_id,
