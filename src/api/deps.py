@@ -2,9 +2,17 @@ from __future__ import annotations
 
 import time
 import jwt
-from fastapi import Request, HTTPException, Query
+from fastapi import Request, HTTPException, Header, Query
 
 from src.config import get_settings
+
+
+def require_api_key(
+    x_api_key: str | None = Header(default=None, alias="X-API-Key"),
+) -> None:
+    settings = get_settings()
+    if not x_api_key or x_api_key != settings.API_KEY:
+        raise HTTPException(status_code=401, detail="Invalid API key")
 
 
 def require_company_from_token(
