@@ -1,19 +1,16 @@
 document.addEventListener("DOMContentLoaded", () => {
     const tbody = document.querySelector("#resources-table tbody");
+    const btn = document.getElementById("add-resource-btn");
 
-    const mockResources = [
-        { id: "-", type: "telegram", title: "Telegram Chat", status: "inactive" },
-        { id: "-", type: "tilda", title: "Tilda Widget", status: "inactive" }
-    ];
-
-    mockResources.forEach(r => {
+    btn.addEventListener("click", () => {
         const tr = document.createElement("tr");
         tr.innerHTML = `
-            <td>${r.id}</td>
-            <td>${r.type}</td>
-            <td>${r.title}</td>
-            <td>${r.status}</td>
+            <td>—</td>
+            <td><input placeholder="kind"></td>
+            <td><input placeholder="code"></td>
+            <td><input placeholder="title"></td>
+            <td>true</td>
         `;
-        tbody.appendChild(tr);
+        tbody.prepend(tr);
     });
 });
