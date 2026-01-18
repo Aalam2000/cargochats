@@ -30,6 +30,7 @@ def require_company_from_token(
         raise HTTPException(status_code=401, detail="Missing token")
 
     settings = get_settings()
+    print("JWT SECRET:", settings.CARGOCHATS_JWT_SECRET)
 
     try:
         payload = jwt.decode(

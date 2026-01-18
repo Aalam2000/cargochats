@@ -1,28 +1,35 @@
-<!doctype html>
-<html lang="ru">
-<head>
-    <meta charset="utf-8">
-    <title>Resources</title>
-    <link rel="stylesheet" href="/static/ui/resources.css">
-</head>
-<body>
+{% extends "base.html" %}
+{% block content %}
 
-<h1>Ресурсы</h1>
+<h2>Resources</h2>
 
-<table id="resources-table">
+<div class="box">
+  <button id="add-resource-btn">Добавить ресурс</button>
+
+  <table id="resources-table">
     <thead>
-        <tr>
-            <th>ID</th>
-            <th>Тип</th>
-            <th>Название</th>
-            <th>Статус</th>
-        </tr>
+      <tr>
+        <th>ID</th>
+        <th>kind</th>
+        <th>code</th>
+        <th>title</th>
+        <th>enabled</th>
+      </tr>
     </thead>
     <tbody>
-        <!-- заполняется JS -->
+      {% for r in items %}
+      <tr>
+        <td>{{ r.id }}</td>
+        <td>{{ r.kind }}</td>
+        <td>{{ r.code }}</td>
+        <td>{{ r.title or "" }}</td>
+        <td>{{ r.is_enabled }}</td>
+      </tr>
+      {% endfor %}
     </tbody>
-</table>
+  </table>
+</div>
 
 <script src="/static/ui/resources.js"></script>
-</body>
-</html>
+
+{% endblock %}
