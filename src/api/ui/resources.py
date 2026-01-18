@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from fastapi import APIRouter, Request, Depends
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 from sqlalchemy import select
 
@@ -16,11 +16,21 @@ templates = Jinja2Templates(directory="src/web/templates")
 @router.get("/resources", response_class=HTMLResponse)
 async def resources_list(
     request: Request,
-    _ctx=Depends(require_company_from_token),
+    _: None = Depends(require_company_from_token),
     db=Depends(get_db),
 ):
-    # ⚠️ если require_company_from_token вернул RedirectResponse
-    # FastAPI сам его отправит, сюда мы не попадём
+    # 🔴 ВОТ ЗДЕСЬ — ЕДИНСТВЕННО ВЕРНОЕ МЕСТО
+    if "token" in request.query_params:
+        response = RedirectResponse(url="/ui/resources", status_code=302)
+        response.set_cookie(
+            key="cargochats_token",
+            value=request.query_params["token"],
+            httponly=True,
+            secure=True,
+            samesite="lax",
+            path="/",
+        )
+        return response
 
     company_id = request.state.company_id
 
@@ -35,7 +45,6 @@ async def resources_list(
         "ui/resources.html",
         {
             "request": request,
-            "company_id": company_id,
             "items": items,
         },
     )
