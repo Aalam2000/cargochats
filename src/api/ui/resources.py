@@ -19,12 +19,13 @@ async def resources_list(
     _: None = Depends(require_company_from_token),
     db=Depends(get_db),
 ):
-    # 🔴 ВОТ ЗДЕСЬ — ЕДИНСТВЕННО ВЕРНОЕ МЕСТО
-    if "token" in request.query_params:
+    # 🔴 если первый заход с token — чистим URL
+    token = request.query_params.get("token")
+    if token:
         response = RedirectResponse(url="/ui/resources", status_code=302)
         response.set_cookie(
             key="cargochats_token",
-            value=request.query_params["token"],
+            value=str(token),   # ⬅️ КЛЮЧЕВОЕ ИСПРАВЛЕНИЕ
             httponly=True,
             secure=True,
             samesite="lax",
