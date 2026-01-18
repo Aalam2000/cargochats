@@ -1,12 +1,12 @@
 """
 PATH: src/api/ui/resources.py
-PURPOSE: UI pages for Resources: list/create/detail (Tilda/Telegram/etc).
+PURPOSE: UI pages for Resources.
 """
 
 from __future__ import annotations
 
 from fastapi import APIRouter, Request, Depends
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 from sqlalchemy import select
 
@@ -24,6 +24,13 @@ async def resources_list(
     _ctx=Depends(require_company_from_token),
     db=Depends(get_db),
 ):
+    # ⬅️ ЕСЛИ ПРИШЛИ С token В URL — ЧИСТИМ АДРЕС
+    if "token" in request.query_params:
+        return RedirectResponse(
+            url="/ui/resources",
+            status_code=302,
+        )
+
     company_id = request.state.company_id
 
     result = await db.execute(
