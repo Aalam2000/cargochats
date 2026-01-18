@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import os
+
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -19,6 +21,7 @@ class Settings(BaseSettings):
     DB_PASSWORD: str = "cargochats"
 
     OPENAI_API_KEY: str = ""
+    CARGOCHATS_JWT_SECRET: str = os.getenv("CARGOCHATS_JWT_SECRET") or os.getenv("SECRET_KEY", "")
 
 
 def get_settings() -> Settings:
