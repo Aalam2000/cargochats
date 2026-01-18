@@ -17,15 +17,17 @@
   </style>
 </head>
 <body>
+
 <header>
   <div class="muted">CargoChats UI</div>
   <nav>
-    <a href="/ui/resources?company_id={{ company_id|default(1) }}">Resources</a>
-    <a href="/ui/dialogs?company_id={{ company_id|default(1) }}">Dialogs</a>
-    <a href="/ui/events?company_id={{ company_id|default(1) }}">Events</a>
+    <a href="/ui/resources">Resources</a>
+    <a href="/ui/dialogs">Dialogs</a>
+    <a href="/ui/events">Events</a>
   </nav>
 </header>
 
 {% block content %}{% endblock %}
+
 </body>
 </html>
