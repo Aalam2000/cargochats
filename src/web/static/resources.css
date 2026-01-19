@@ -1,7 +1,8 @@
-/* ===== Таблица ресурсов ===== */
-
+/* ========= Resources UI (global) ========= */
+/* Таблица /ui/resources + модалка добавления ресурса */
+/* Основано на твоём текущем ui/resources.css, без мусора, совместимо с base.css */
 .table-container {
-    background: #fefefe;
+    background: #ffffff;
     border: 1px solid #e4e6eb;
     border-radius: 10px;
     box-shadow: 0 3px 10px rgba(0, 0, 0, 0.05);
@@ -24,6 +25,7 @@
     color: #004aad;
 }
 
+/* Кнопка "+" */
 .btn-table {
     background: none;
     border: none;
@@ -38,8 +40,7 @@
     background: rgba(0, 74, 173, 0.06);
 }
 
-/* ===== Таблица ===== */
-
+/* Таблица */
 .table {
     width: 100%;
     border-collapse: collapse;
@@ -69,18 +70,20 @@
     cursor: pointer;
 }
 
-/* ===== Удаление ===== */
-
+/* Удаление (🗑) */
 .delete-cell {
     color: #a01515;
     font-size: 18px;
     cursor: pointer;
+    user-select: none;
 }
 
 .delete-cell:hover {
     color: #e60000;
     transform: scale(1.15);
 }
+
+/* Модалка */
 .modal {
     position: fixed;
     inset: 0;
@@ -111,6 +114,25 @@
     gap: 10px;
 }
 
+/* Строка ресурса */
 .resource-row {
     cursor: pointer;
 }
+
+/* ===== OpenAI key page helpers ===== */
+.field-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    margin-bottom: 6px;
+}
+
+.field-head label {
+    margin: 0;
+}
+
+#apiKey {
+    width: 100%;
+}
+

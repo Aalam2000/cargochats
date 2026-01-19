@@ -12,6 +12,13 @@ services:
         condition: service_healthy
     restart: unless-stopped
 
+    # Dev: hot-reload without image rebuild / container restart
+    volumes:
+      - .:/app
+    environment:
+      WATCHFILES_FORCE_POLLING: "true"
+    command: ["uvicorn", "src.main:app", "--host", "0.0.0.0", "--port", "8000", "--reload", "--reload-dir", "/app/src"]
+
   worker:
     build:
       context: .
@@ -22,6 +29,13 @@ services:
       postgres:
         condition: service_healthy
     restart: unless-stopped
+
+    # Dev: restart worker process on code changes (container stays up)
+    volumes:
+      - .:/app
+    environment:
+      WATCHFILES_FORCE_POLLING: "true"
+    command: ["bash", "-lc", "watchfiles --filter python 'python -m src.worker' /app/src"]
 
   postgres:
     image: postgres:16-alpine

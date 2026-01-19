@@ -1,0 +1,578 @@
+/* ========= ФИРМЕННЫЙ СТИЛЬ Cargo #1 (GLOBAL) ========= */
+/* Основано на твоём эталоне, без дублей, + базовые классы под UI страниц. */
+
+:root {
+    --bg-main: #f9fafb;
+    --bg-sidebar: #ffffff;
+
+    --accent: #007bff;
+    --accent-dark: #0056b3;
+
+    --text-main: #222;
+    --text-muted: #666;
+
+    --border: #e3e3e3;
+    --radius: 14px;
+    --shadow: 0 4px 14px rgba(0, 0, 0, 0.08);
+
+    --font-main: 'Montserrat', sans-serif;
+}
+
+/* ====== Базовая сетка + раздельный скролл ====== */
+html, body {
+    margin: 0;
+    padding: 0;
+    font-family: var(--font-main);
+    color: var(--text-main);
+    background-color: var(--bg-main);
+    height: 100%;
+    overflow: hidden; /* скролл только справа */
+}
+
+.layout {
+    height: 100vh;
+    min-height: 0;
+    display: flex;
+}
+
+/* ====== Левая панель ====== */
+.sidebar {
+    background: var(--bg-sidebar);
+    box-shadow: var(--shadow);
+    width: 260px;
+    height: 100vh;
+
+    display: flex;
+    flex-direction: column;
+    justify-content: flex-start;
+    align-items: stretch;
+
+    padding: 24px;
+    box-sizing: border-box;
+
+    transition: all 0.3s ease;
+    z-index: 10;
+    position: relative; /* бургер внутри */
+    overflow-x: visible;  /* чтобы бургер-ухо не резалось */
+    overflow-y: hidden;   /* слева скролл не нужен */
+}
+
+/* ====== Свернутая панель (ПК) ====== */
+.sidebar.collapsed {
+    width: 60px;
+    overflow: visible;
+    transition: all 0.3s ease;
+}
+
+.sidebar.collapsed .logo-block,
+.sidebar.collapsed .menu,
+.sidebar.collapsed .user-info,
+.sidebar.collapsed .login-form,
+.sidebar.collapsed .admin-block {
+    display: none;
+}
+
+/* бургер остаётся видимым */
+.sidebar.collapsed .burger {
+    right: -42px;
+    background: var(--bg-sidebar);
+    box-shadow: var(--shadow);
+    border-radius: 0 8px 8px 0;
+    width: 42px;
+    height: 42px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+/* ====== Лого ====== */
+.logo-block {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    height: 120px;
+    margin-bottom: 2rem;
+}
+
+.logo {
+    width: 80px;
+    height: auto;
+    object-fit: contain;
+}
+
+.brand {
+    font-weight: 700;
+    color: var(--accent-dark);
+    font-size: 1.3rem;
+    margin: 0;
+}
+
+/* ====== Бургер ====== */
+.burger {
+    position: absolute;
+    top: 16px;
+    right: 16px;
+
+    background: none;
+    border: none;
+    font-size: 24px;
+    line-height: 1;
+    color: var(--text-main);
+    cursor: pointer;
+
+    z-index: 1001;
+}
+
+/* ====== Меню ====== */
+.menu {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+}
+
+.menu-item {
+    text-decoration: none;
+    color: var(--text-main);
+    font-weight: 500;
+
+    padding: 0.6rem 0.9rem;
+    border-radius: var(--radius);
+    transition: 0.2s ease;
+}
+
+.menu-item:hover {
+    background: var(--accent);
+    color: #fff;
+}
+
+.menu-item.active {
+    background: var(--accent);
+    color: #fff !important;
+}
+
+.menu-item.logout {
+    color: var(--accent-dark);
+    font-weight: 600;
+}
+
+/* ====== Аккордеон меню ====== */
+.accordion {
+    margin-top: 0.8rem;
+}
+
+.accordion-header {
+    font-weight: 600;
+    cursor: pointer;
+    padding: 0.6rem 0.9rem;
+    color: var(--accent-dark);
+    border-radius: var(--radius);
+    transition: background 0.2s ease;
+}
+
+.accordion-header:hover {
+    background: var(--accent);
+    color: #fff;
+}
+
+.accordion-body {
+    display: none;
+    flex-direction: column;
+    margin-left: 0.5rem;
+    border-left: 2px solid var(--border);
+    padding-left: 0.6rem;
+}
+
+.accordion.open .accordion-body {
+    display: flex;
+}
+
+/* ====== Юзер + админ блок ====== */
+.user-info {
+    font-weight: 600;
+    margin-bottom: 1.5rem;
+}
+
+.admin-block {
+    margin-top: auto;
+    text-align: center;
+    padding-top: 1.5rem;
+}
+
+.admin-block button + button {
+    margin-top: 8px;
+}
+
+/* ====== Контент (скролл ТОЛЬКО тут) ====== */
+.content {
+    flex: 1 1 auto;
+    min-height: 0;
+
+    height: 100vh;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+
+    background: var(--bg-main);
+    padding: 40px 50px;
+    box-sizing: border-box;
+}
+
+/* ========= Универсальные блоки/страницы ========= */
+.page {
+    max-width: 1100px;
+    margin: 0 auto;
+}
+
+.page-title {
+    color: #004aad;
+    font-size: 1.8rem;
+    font-weight: 700;
+    margin-bottom: 15px;
+}
+
+.section-title {
+    color: #004aad;
+    font-size: 1.3rem;
+    font-weight: 600;
+    margin: 25px 0 10px 0;
+}
+
+.text {
+    font-size: 1rem;
+    color: #1f1f1f;
+    line-height: 1.6;
+    margin-bottom: 15px;
+}
+
+.list {
+    margin: 10px 0 25px 20px;
+    padding-left: 20px;
+    line-height: 1.7;
+    color: #222;
+}
+
+.card, .info-block, .intro-block, .summary-block {
+    background: #fff;
+    border-radius: var(--radius);
+    box-shadow: var(--shadow);
+    padding: 20px 25px;
+    margin-bottom: 25px;
+    border: 1px solid var(--border);
+}
+
+/* Заголовок+кнопки (для UI страниц типа OpenAI) */
+.header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 14px;
+    margin-bottom: 14px;
+}
+
+.header .meta {
+    color: var(--text-muted);
+    font-size: 0.95rem;
+    margin-top: 6px;
+}
+
+.actions {
+    display: flex;
+    gap: 10px;
+    align-items: center;
+    flex-wrap: wrap;
+}
+
+/* ===== Универсальный стиль кнопок ===== */
+button, .btn {
+    padding: 10px 14px;
+    border: none;
+    border-radius: var(--radius);
+    background: var(--accent);
+    color: white;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background 0.2s ease;
+}
+
+button:hover, .btn:hover {
+    background: var(--accent-dark);
+    text-decoration: none;
+}
+
+/* Доп. тип кнопок */
+.btn.secondary {
+    background: #ffffff;
+    border: 1px solid var(--border);
+    color: var(--text-main);
+}
+
+.btn.secondary:hover {
+    background: #f1f5ff;
+    border-color: #cddcff;
+}
+
+/* ===== Формы (универсально) ===== */
+.field { display: flex; flex-direction: column; gap: 0.4rem; }
+
+label {
+    font-weight: 600;
+    color: var(--text-muted);
+}
+
+input, select, textarea {
+    padding: 10px 12px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    font-size: 0.95rem;
+    background: #fff;
+    box-sizing: border-box;
+}
+
+input:focus, select:focus, textarea:focus {
+    border-color: var(--accent);
+    outline: none;
+    box-shadow: 0 0 4px rgba(0, 123, 255, 0.3);
+}
+
+textarea { resize: vertical; min-height: 110px; }
+
+.row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+/* ===== Статусы (OK/ERR/INFO) ===== */
+.status {
+    margin-top: 12px;
+    padding: 10px 12px;
+    border-radius: var(--radius);
+    border: 1px solid var(--border);
+    background: #fff;
+    font-size: 0.95rem;
+}
+
+.status.ok {
+    border-color: rgba(46, 204, 113, 0.35);
+    background: rgba(46, 204, 113, 0.10);
+}
+
+.status.err {
+    border-color: rgba(255, 77, 79, 0.35);
+    background: rgba(255, 77, 79, 0.10);
+}
+
+.status.info {
+    border-color: rgba(0, 0, 0, 0.12);
+    background: rgba(0, 0, 0, 0.03);
+}
+
+/* ===== Таблицы (для /ui/resources и т.п.) ===== */
+.table {
+    width: 100%;
+    border-collapse: collapse;
+    background: #fff;
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    overflow: hidden;
+    box-shadow: var(--shadow);
+}
+
+.table th, .table td {
+    padding: 12px 14px;
+    border-bottom: 1px solid var(--border);
+    text-align: left;
+    font-size: 0.95rem;
+}
+
+.table th {
+    color: var(--text-muted);
+    font-weight: 600;
+    background: #f3f6fb;
+}
+
+.table tr:hover td {
+    background: #f7faff;
+}
+
+/* ====== Форма входа (как в эталоне) ====== */
+.login-form {
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+    padding: 20px;
+    background: var(--bg-main);
+    border-radius: var(--radius);
+    box-shadow: var(--shadow);
+    border: 1px solid var(--border);
+}
+
+.login-form h2 {
+    margin: 0;
+    text-align: center;
+    color: var(--accent-dark);
+}
+
+/* ====== Профиль (как в эталоне) ====== */
+.profile-card {
+    background: #fff;
+    border-radius: var(--radius);
+    box-shadow: var(--shadow);
+    padding: 30px 40px;
+    max-width: 800px;
+    margin: 0 auto;
+    border: 1px solid var(--border);
+}
+
+.profile-title {
+    color: var(--accent-dark);
+    font-size: 1.6rem;
+    font-weight: 600;
+    margin-bottom: 1.5rem;
+    text-align: center;
+}
+
+.profile-form {
+    display: flex;
+    flex-direction: column;
+    gap: 1.5rem;
+}
+
+.profile-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+    gap: 1.2rem 2rem;
+}
+
+.readonly {
+    padding: 10px 12px;
+    background: #f5f5f5;
+    border-radius: var(--radius);
+    border: 1px solid var(--border);
+}
+
+.profile-actions {
+    text-align: center;
+    margin-top: 1.5rem;
+}
+
+/* ====== Мобильная адаптация (как в эталоне) ====== */
+@media (max-width: 900px) {
+    .layout {
+        flex-direction: column;
+    }
+
+    /* Панель — изначально скрыта (width 0) */
+    .sidebar {
+        position: fixed !important;
+        top: 0;
+        left: 0;
+        width: 0 !important;
+        height: 100vh !important;
+        background: var(--bg-sidebar);
+        box-shadow: var(--shadow);
+        overflow: hidden !important;
+        transition: width 0.28s ease, transform 0.28s ease;
+        z-index: 1000;
+        display: flex;
+        flex-direction: column;
+        align-items: stretch;
+        padding: 0;
+    }
+
+    /* Раскрытая панель */
+    .sidebar.open {
+        width: 260px !important;
+        padding: 24px !important;
+        overflow-y: auto !important;
+    }
+
+    .sidebar.open .logo-block,
+    .sidebar.open .menu,
+    .sidebar.open .user-info,
+    .sidebar.open .login-form,
+    .sidebar.open .admin-block {
+        display: block !important;
+    }
+
+    /* Удобная зона нажатия */
+    .menu-item {
+        padding: 14px 18px !important;
+        font-size: 1.05rem !important;
+        border-radius: 10px !important;
+        display: block !important;
+        width: calc(100% - 16px) !important;
+        margin-bottom: 6px !important;
+    }
+
+    /* Бургер-ухо */
+    .burger {
+        position: fixed !important;
+        top: 16px !important;
+        left: -6px !important;
+        width: 44px !important;
+        height: 44px !important;
+        display: flex !important;
+        align-items: center !important;
+        justify-content: center !important;
+        background: var(--bg-sidebar) !important;
+        box-shadow: var(--shadow) !important;
+        border: none !important;
+        border-radius: 0 8px 8px 0 !important;
+        font-size: 24px !important;
+        color: var(--text-main) !important;
+        cursor: pointer !important;
+        z-index: 1101 !important;
+        pointer-events: auto !important;
+    }
+
+    .sidebar.open .burger {
+        position: absolute !important;
+        left: 16px !important;
+        top: 16px !important;
+        box-shadow: none !important;
+        border-radius: 8px !important;
+        width: 42px !important;
+        height: 42px !important;
+        z-index: 1102 !important;
+    }
+
+    .menu {
+        width: 100%;
+        padding-left: 16px;
+        box-sizing: border-box;
+    }
+
+    .user-info, .admin-block {
+        text-align: left;
+        width: 100%;
+        padding-left: 16px;
+    }
+
+    /* Контент */
+    .content {
+        padding: 20px;
+    }
+
+    .profile-card {
+        padding: 20px;
+        margin: 0 10px;
+        box-shadow: none;
+        border: 1px solid var(--border);
+    }
+
+    .profile-title {
+        font-size: 1.3rem;
+        margin-bottom: 1rem;
+    }
+
+    .profile-grid {
+        grid-template-columns: 1fr;
+        gap: 1rem;
+    }
+
+    .btn {
+        width: 100%;
+        padding: 12px;
+        font-size: 1rem;
+    }
+}

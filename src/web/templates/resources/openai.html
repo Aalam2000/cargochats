@@ -1,14 +1,55 @@
 {% extends "base.html" %}
+
+{% block head %}
+{% endblock %}
+
 {% block content %}
+<div class="page"
+     data-resource-id="{{ resource.id }}"
+     data-resource-kind="{{ resource.kind }}"
+     data-has-key="{{ '1' if openai_has_key else '0' }}"
+     data-key-mask="{{ openai_key_mask }}">
 
-<h2>OpenAI resource</h2>
+  <div class="header">
+    <div class="title">
+      <h1>OpenAI API ключ</h1>
+      <div class="meta">
+        Ресурс: <b>{{ resource.title }}</b> · id={{ resource.id }}
+      </div>
+      <div class="hint">
+        Один OpenAI-ключ = один ресурс. Другие ресурсы компании выбирают, какой OpenAI-ресурс использовать.
+      </div>
+    </div>
 
-<div class="box">
-  <p><b>ID:</b> {{ resource.id }}</p>
-  <p><b>Title:</b> {{ resource.title }}</p>
-  <p><b>Type:</b> {{ resource.kind }}</p>
+    <div class="actions">
+      <a class="btn secondary" id="btnBack" href="/ui/resources">Назад</a>
+      <button class="btn" id="btnSave" type="button">Сохранить</button>
+      <button class="btn" id="btnCheck" type="button">Проверить ключ</button>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="field">
+      <div class="field-head">
+        <label for="apiKey">API key</label>
+        <button class="btn secondary" id="btnToggle" type="button">Показать</button>
+      </div>
+
+      <input id="apiKey"
+             type="password"
+             autocomplete="off"
+             placeholder="sk-..."
+             value="{{ openai_key_mask if openai_has_key else '' }}" />
+
+      <div class="sub">
+        Если ключ сохранён — поле заполнено звёздочками. Чтобы заменить — кликни в поле и введи новый ключ.
+      </div>
+    </div>
+
+    <div class="status" id="statusBox" style="display:none;"></div>
+  </div>
+
 </div>
 
-<p>Заглушка настроек OpenAI</p>
-
+<script src="/static/resources/openai.js"></script>
 {% endblock %}

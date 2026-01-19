@@ -5,30 +5,24 @@
   <meta name="viewport" content="width=device-width, initial-scale=1"/>
   <link rel="icon" href="/static/favicon.ico" type="image/x-icon">
   <title>{{ title or "CargoChats UI" }}</title>
-  <style>
-    body { font-family: Arial, sans-serif; margin: 24px; }
-    header { margin-bottom: 16px; }
-    nav a { margin-right: 12px; }
-    .muted { color: #666; }
-    .box { border: 1px solid #ddd; padding: 12px; border-radius: 8px; }
-    table { border-collapse: collapse; width: 100%; }
-    th, td { border: 1px solid #ddd; padding: 8px; text-align: left; }
-    th { background: #f5f5f5; }
-    input, button { padding: 8px; }
-  </style>
+
+  <!-- GLOBAL STYLES (единственные) -->
+  <link rel="stylesheet" href="/static/base.css">
+  <link rel="stylesheet" href="/static/resources.css">
+
+  {% block head %}{% endblock %}
 </head>
+
 <body>
+  <header>
+    <div class="muted">CargoChats UI</div>
+    <nav>
+      <a href="/ui/resources">Resources</a>
+      <a href="/ui/dialogs">Dialogs</a>
+      <a href="/ui/events">Events</a>
+    </nav>
+  </header>
 
-<header>
-  <div class="muted">CargoChats UI</div>
-  <nav>
-    <a href="/ui/resources">Resources</a>
-    <a href="/ui/dialogs">Dialogs</a>
-    <a href="/ui/events">Events</a>
-  </nav>
-</header>
-
-{% block content %}{% endblock %}
-
+  {% block content %}{% endblock %}
 </body>
 </html>

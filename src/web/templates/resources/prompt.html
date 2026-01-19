@@ -1,0 +1,88 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="page"
+     data-resource-id="{{ resource.id }}"
+     data-resource-kind="{{ resource.kind }}">
+
+  <div class="header">
+    <div class="title">
+      <h1>Prompt (AI профиль)</h1>
+      <div class="meta">
+        Ресурс: <b>{{ resource.title }}</b> · id={{ resource.id }}
+      </div>
+      <div class="hint">
+        Этот ресурс хранит модель/промпт/источники. Рабочие ресурсы (web/telegram/whatsapp) будут ссылаться на него.
+      </div>
+    </div>
+
+    <div class="actions">
+      <a class="btn secondary" id="btnBack" href="/ui/resources">Назад</a>
+      <button class="btn" id="btnSave" type="button">Сохранить</button>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="field">
+      <label for="modelSelect">Model</label>
+      {% set current_model = (prompt_model or "") %}
+      <select id="modelSelect">
+        {% if current_model and (current_model not in (prompt_models or [])) %}
+          <option value="{{ current_model }}" selected>{{ current_model }} (custom)</option>
+        {% endif %}
+        {% for m in (prompt_models or []) %}
+          <option value="{{ m }}" {% if m == current_model %}selected{% endif %}>{{ m }}</option>
+        {% endfor %}
+      </select>
+      <div class="sub">Список берём из OPENAI_ALLOWED_MODELS (csv). Если пусто — используем gpt-4o-mini.</div>
+    </div>
+
+    <div class="field">
+      <label for="historyPairs">History (пар сообщений)</label>
+      <input id="historyPairs"
+             type="number"
+             min="0"
+             max="50"
+             value="{{ prompt_history_pairs if prompt_history_pairs is not none else 20 }}" />
+      <div class="sub">Сколько последних пар user+assistant отправляем в модель.</div>
+    </div>
+
+    <div class="field">
+      <label for="systemPrompt">System prompt</label>
+      <textarea id="systemPrompt"
+                placeholder="Опиши роль, правила, стиль ответов...">{{ prompt_system_prompt or '' }}</textarea>
+    </div>
+
+    <div class="field">
+      <label>Google sources (файл или папка)</label>
+
+      <div id="sourcesList">
+        {% for url in (prompt_google_sources or []) %}
+        <div class="source-row" style="display:flex; gap:10px; align-items:center; margin-bottom:10px;">
+          <input class="source-url" type="text" value="{{ url }}" placeholder="https://docs.google.com/..." style="flex:1;" />
+          <button class="btn secondary btn-del" type="button">Удалить</button>
+        </div>
+        {% endfor %}
+      </div>
+
+      <div style="display:flex; gap:10px;">
+        <button class="btn secondary" id="btnAddSource" type="button">+ Добавить ссылку</button>
+      </div>
+
+      <div class="sub">Ссылка может быть на документ или на папку. Папка → читаем все файлы внутри.</div>
+    </div>
+
+    <div class="field">
+      <label style="display:flex; gap:10px; align-items:center;">
+        <input id="outOfScopeEnabled" type="checkbox" {% if prompt_out_of_scope_enabled %}checked{% endif %} />
+        Если тема не по роли/данным → отвечать “эта тема за рамками моей компетенции”
+      </label>
+    </div>
+
+    <div class="status" id="statusBox" style="display:none;"></div>
+  </div>
+
+</div>
+
+<script src="/static/resources/prompt.js"></script>
+{% endblock %}
