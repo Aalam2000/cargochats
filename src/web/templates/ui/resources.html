@@ -3,33 +3,39 @@
 
 <h2>Resources</h2>
 
-<div class="box">
-  <button id="add-resource-btn">Добавить ресурс</button>
+<div class="table-container">
+  <div class="table-card-header">
+    <h4>Resources</h4>
+    <button class="btn-table" id="add-resource-btn">＋</button>
+  </div>
 
-  <table id="resources-table">
-    <thead>
-      <tr>
-        <th>ID</th>
-        <th>kind</th>
-        <th>code</th>
-        <th>title</th>
-        <th>enabled</th>
-      </tr>
-    </thead>
-    <tbody>
-      {% for r in items %}
-      <tr>
-        <td>{{ r.id }}</td>
-        <td>{{ r.kind }}</td>
-        <td>{{ r.code }}</td>
-        <td>{{ r.title or "" }}</td>
-        <td>{{ r.is_enabled }}</td>
-      </tr>
-      {% endfor %}
-    </tbody>
-  </table>
+  <div class="table-wrapper">
+    <table class="table" id="resources-table">
+      <thead>
+        <tr>
+          <th>ID</th>
+          <th>Kind</th>
+          <th>Title</th>
+          <th>Enabled</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for r in items %}
+        <tr data-id="{{ r.id }}">
+          <td>{{ r.id }}</td>
+          <td>{{ r.kind }}</td>
+          <td>{{ r.title or "" }}</td>
+          <td>{{ r.is_enabled }}</td>
+          <td class="delete-cell">🗑</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
 </div>
 
+<link rel="stylesheet" href="/static/ui/resources.css">
 <script src="/static/ui/resources.js"></script>
 
 {% endblock %}
