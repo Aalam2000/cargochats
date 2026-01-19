@@ -1,19 +1,29 @@
 document.addEventListener("DOMContentLoaded", () => {
-    const addBtn = document.getElementById("add-resource-btn");
-    const createRow = document.getElementById("create-row");
-    const createBtn = document.getElementById("create-confirm");
-    const table = document.getElementById("resources-table");
+    const modal = document.getElementById("create-modal");
+    const openBtn = document.getElementById("open-create-modal");
+    const cancelBtn = document.getElementById("modal-cancel");
+    const createBtn = document.getElementById("modal-create");
 
-    addBtn.addEventListener("click", () => {
-        createRow.style.display = "";
-    });
+    const kindInput = document.getElementById("modal-kind");
+    const titleInput = document.getElementById("modal-title");
+    const tableBody = document.querySelector("#resources-table tbody");
 
-    createBtn.addEventListener("click", async () => {
-        const kind = document.getElementById("new-kind").value;
-        const title = document.getElementById("new-title").value.trim();
+    openBtn.onclick = () => {
+        modal.classList.remove("hidden");
+    };
+
+    cancelBtn.onclick = () => {
+        modal.classList.add("hidden");
+        kindInput.value = "";
+        titleInput.value = "";
+    };
+
+    createBtn.onclick = async () => {
+        const kind = kindInput.value;
+        const title = titleInput.value.trim();
 
         if (!kind || !title) {
-            alert("Выбери тип и задай название");
+            alert("Заполни тип и название");
             return;
         }
 
@@ -29,12 +39,27 @@ document.addEventListener("DOMContentLoaded", () => {
         }
 
         const data = await r.json();
-        window.location.href = `/ui/resources/${data.id}`;
-    });
 
-    table.addEventListener("click", async (e) => {
+        const tr = document.createElement("tr");
+        tr.dataset.id = data.id;
+        tr.className = "resource-row";
+        tr.innerHTML = `
+            <td>${data.id}</td>
+            <td>${kind}</td>
+            <td>${title}</td>
+            <td>true</td>
+            <td class="delete-cell">🗑</td>
+        `;
+        tableBody.appendChild(tr);
+
+        modal.classList.add("hidden");
+        kindInput.value = "";
+        titleInput.value = "";
+    };
+
+    tableBody.addEventListener("click", async (e) => {
         const tr = e.target.closest("tr");
-        if (!tr || !tr.dataset.id) return;
+        if (!tr) return;
 
         const id = tr.dataset.id;
 

@@ -6,7 +6,7 @@
 <div class="table-container">
   <div class="table-card-header">
     <h4>Resources</h4>
-    <button class="btn-table" id="add-resource-btn">＋</button>
+    <button class="btn-table" id="open-create-modal">＋</button>
   </div>
 
   <div class="table-wrapper">
@@ -20,30 +20,9 @@
           <th>🗑</th>
         </tr>
       </thead>
-
       <tbody>
-        <!-- строка создания ресурса -->
-        <tr id="create-row" style="display:none">
-          <td>—</td>
-          <td>
-            <select id="new-kind">
-              <option value="">— выбрать —</option>
-              <option value="openai">OpenAI API</option>
-              <option value="telegram">Telegram</option>
-              <option value="web">Web-chat (site)</option>
-            </select>
-          </td>
-          <td>
-            <input id="new-title" placeholder="Название ресурса">
-          </td>
-          <td>true</td>
-          <td>
-            <button id="create-confirm">✔</button>
-          </td>
-        </tr>
-
         {% for r in items %}
-        <tr data-id="{{ r.id }}">
+        <tr data-id="{{ r.id }}" class="resource-row">
           <td>{{ r.id }}</td>
           <td>{{ r.kind }}</td>
           <td>{{ r.title or "" }}</td>
@@ -53,6 +32,29 @@
         {% endfor %}
       </tbody>
     </table>
+  </div>
+</div>
+
+<!-- MODAL -->
+<div id="create-modal" class="modal hidden">
+  <div class="modal-box">
+    <h3>Добавить ресурс</h3>
+
+    <label>Тип ресурса</label>
+    <select id="modal-kind">
+      <option value="">— выбрать —</option>
+      <option value="openai">OpenAI API</option>
+      <option value="telegram">Telegram</option>
+      <option value="web">Web-chat (site)</option>
+    </select>
+
+    <label>Название ресурса</label>
+    <input id="modal-title" placeholder="Название ресурса">
+
+    <div class="modal-actions">
+      <button id="modal-cancel">Отмена</button>
+      <button id="modal-create">Создать</button>
+    </div>
   </div>
 </div>
 
