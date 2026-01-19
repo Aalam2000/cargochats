@@ -105,3 +105,33 @@ async def resource_delete(
     await db.commit()
 
     return JSONResponse({"status": "ok"})
+
+@router.get("/resources/{resource_id}", response_class=HTMLResponse)
+async def resource_detail(
+    resource_id: int,
+    request: Request,
+    _: None = Depends(require_company_from_token),
+    db=Depends(get_db),
+):
+    company_id = request.state.company_id
+
+    result = await db.execute(
+        select(Resource).where(
+            Resource.id == resource_id,
+            Resource.company_id == company_id,
+        )
+    )
+    resource = result.scalar_one_or_none()
+
+    if not resource:
+        raise HTTPException(status_code=404, detail="Resource not found")
+
+    template = f"resources/{resource.kind}.html"
+
+    return templates.TemplateResponse(
+        template,
+        {
+            "request": request,
+            "resource": resource,
+        },
+    )
