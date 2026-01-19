@@ -1,41 +1,40 @@
-{% extends "base.html" %}
-{% block content %}
+<thead>
+  <tr>
+    <th>ID</th>
+    <th>Тип ресурса</th>
+    <th>Название</th>
+    <th>Enabled</th>
+    <th>🗑</th>
+  </tr>
+</thead>
+<tbody>
+  <!-- строка создания -->
+  <tr id="create-row" style="display:none">
+    <td>—</td>
+    <td>
+      <select id="new-kind">
+        <option value="">— выбрать —</option>
+        <option value="openai">OpenAI API</option>
+        <option value="telegram">Telegram</option>
+        <option value="web">Web-chat (site)</option>
+      </select>
+    </td>
+    <td>
+      <input id="new-title" placeholder="Название ресурса">
+    </td>
+    <td>true</td>
+    <td>
+      <button id="create-confirm">✔</button>
+    </td>
+  </tr>
 
-<h2>Resources</h2>
-
-<div class="table-container">
-  <div class="table-card-header">
-    <h4>Resources</h4>
-    <button class="btn-table" id="add-resource-btn">＋</button>
-  </div>
-
-  <div class="table-wrapper">
-    <table class="table" id="resources-table">
-      <thead>
-        <tr>
-          <th>ID</th>
-          <th>Kind</th>
-          <th>Title</th>
-          <th>Enabled</th>
-          <th></th>
-        </tr>
-      </thead>
-      <tbody>
-        {% for r in items %}
-        <tr data-id="{{ r.id }}">
-          <td>{{ r.id }}</td>
-          <td>{{ r.kind }}</td>
-          <td>{{ r.title or "" }}</td>
-          <td>{{ r.is_enabled }}</td>
-          <td class="delete-cell">🗑</td>
-        </tr>
-        {% endfor %}
-      </tbody>
-    </table>
-  </div>
-</div>
-
-<link rel="stylesheet" href="/static/ui/resources.css">
-<script src="/static/ui/resources.js"></script>
-
-{% endblock %}
+  {% for r in items %}
+  <tr data-id="{{ r.id }}">
+    <td>{{ r.id }}</td>
+    <td>{{ r.kind }}</td>
+    <td>{{ r.title or "" }}</td>
+    <td>{{ r.is_enabled }}</td>
+    <td class="delete-cell">🗑</td>
+  </tr>
+  {% endfor %}
+</tbody>

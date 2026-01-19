@@ -17,9 +17,9 @@ templates = Jinja2Templates(directory="src/web/templates")
 
 @router.get("/resources", response_class=HTMLResponse)
 async def resources_list(
-    request: Request,
-    _: None = Depends(require_company_from_token),
-    db=Depends(get_db),
+        request: Request,
+        _: None = Depends(require_company_from_token),
+        db=Depends(get_db),
 ):
     # 🔴 если первый заход с token — чистим URL
     token = request.query_params.get("token")
@@ -55,22 +55,27 @@ async def resources_list(
 
 @router.post("/resources")
 async def resource_create(
-    request: Request,
-    _: None = Depends(require_company_from_token),
-    db=Depends(get_db),
+        request: Request,
+        _: None = Depends(require_company_from_token),
+        db=Depends(get_db),
 ):
     data = await request.json()
     kind = data.get("kind")
+    title = data.get("title")
 
     if kind not in ("openai", "telegram", "web"):
         raise HTTPException(status_code=400, detail="Invalid resource kind")
+
+    if not title:
+        raise HTTPException(status_code=400, detail="Title required")
 
     company_id = request.state.company_id
 
     resource = Resource(
         company_id=company_id,
         kind=kind,
-        code=str(uuid4()),  # техническое поле, не используем
+        title=title,
+        code=str(uuid4()),
     )
     db.add(resource)
     await db.flush()
@@ -83,10 +88,10 @@ async def resource_create(
 
 @router.delete("/resources/{resource_id}")
 async def resource_delete(
-    resource_id: int,
-    request: Request,
-    _: None = Depends(require_company_from_token),
-    db=Depends(get_db),
+        resource_id: int,
+        request: Request,
+        _: None = Depends(require_company_from_token),
+        db=Depends(get_db),
 ):
     company_id = request.state.company_id
 
