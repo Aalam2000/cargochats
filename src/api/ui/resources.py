@@ -21,6 +21,20 @@ async def resources_list(
     _: None = Depends(require_company_from_token),
     db=Depends(get_db),
 ):
+    # 🔴 если первый заход с token — чистим URL
+    token = request.query_params.get("token")
+    if token:
+        response = RedirectResponse(url="/ui/resources", status_code=302)
+        response.set_cookie(
+            key="cargochats_token",
+            value=str(token),
+            httponly=True,
+            secure=True,
+            samesite="lax",
+            path="/",
+        )
+        return response
+
     company_id = request.state.company_id
 
     result = await db.execute(
@@ -57,14 +71,11 @@ async def resource_create(
         company_id=company_id,
         kind=kind,
         code=str(uuid4()),  # техническое поле, не используем
-        title=None,
     )
     db.add(resource)
     await db.flush()
 
-    settings = ResourceSettings(resource_id=resource.id)
-    db.add(settings)
-
+    db.add(ResourceSettings(resource_id=resource.id))
     await db.commit()
 
     return JSONResponse({"id": resource.id})
@@ -73,10 +84,11 @@ async def resource_create(
 @router.delete("/resources/{resource_id}")
 async def resource_delete(
     resource_id: int,
+    request: Request,
     _: None = Depends(require_company_from_token),
     db=Depends(get_db),
 ):
-    company_id = _.company_id if hasattr(_, "company_id") else None
+    company_id = request.state.company_id
 
     await db.execute(
         delete(Resource)
