@@ -152,6 +152,7 @@ async def resource_detail(
     telegram_session_id = None
     telegram_session_is_enabled = False
     telegram_session_is_activated = False
+    telegram_phone = ""
 
     openai_resources = []
     prompt_resources = []
