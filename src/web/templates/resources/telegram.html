@@ -1,14 +1,171 @@
 {% extends "base.html" %}
+
+{% block head %}
+<style>
+    /* Лампочка и строка статуса */
+    .session-indicator {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        margin-top: 8px;
+        color: var(--text-muted);
+        font-size: 0.95rem;
+    }
+
+    .lamp {
+        width: 10px;
+        height: 10px;
+        border-radius: 50%;
+        border: 1px solid var(--border);
+        display: inline-block;
+        background: rgba(255, 77, 79, 0.85); /* по умолчанию OFF */
+    }
+
+    .lamp.on {
+        background: rgba(46, 204, 113, 0.95);
+    }
+
+    .lamp.off {
+        background: rgba(255, 77, 79, 0.85);
+    }
+</style>
+{% endblock %}
+
 {% block content %}
+<div class="page"
+     data-resource-id="{{ resource.id }}"
+     data-resource-kind="{{ resource.kind }}"
+     data-has-hash="{{ 1 if telegram_has_hash else 0 }}"
+     data-hash-mask="{{ telegram_api_hash_mask or '' }}"
+     data-session-id="{{ telegram_session_id or '' }}"
+     data-session-enabled="{{ 1 if telegram_session_is_enabled else 0 }}"
+     data-session-activated="{{ 1 if telegram_session_is_activated else 0 }}"
+>
+    <div class="header">
+        <div class="title">
+            <h1>Telegram (Telethon)</h1>
 
-<h2>Telegram resource</h2>
+            <div class="meta">
+                Ресурс: <b>{{ resource.title }}</b> · id={{ resource.id }}
+            </div>
 
-<div class="box">
-  <p><b>ID:</b> {{ resource.id }}</p>
-  <p><b>Title:</b> {{ resource.title }}</p>
-  <p><b>Type:</b> {{ resource.kind }}</p>
+            <div class="session-indicator">
+                <span id="sessionLamp"
+                      class="lamp {% if telegram_session_is_activated %}on{% else %}off{% endif %}"></span>
+                <span id="sessionLampText">
+          {% if telegram_session_is_activated %}Сессия активна{% else %}Сессия не активна{% endif %}
+          · {% if telegram_session_is_enabled %}воркер включен{% else %}воркер выключен{% endif %}
+          {% if telegram_session_id %}· session_id={{ telegram_session_id }}{% endif %}
+        </span>
+            </div>
+
+            <div class="hint">
+                Активация — реальная: отправка кода в Telegram и подтверждение через Telethon.
+            </div>
+        </div>
+
+        <div class="actions">
+            <a class="btn secondary" id="btnBack" href="/ui/resources">Назад</a>
+
+            <button class="btn secondary" id="btnActivate" type="button">Активация</button>
+
+            <button class="btn secondary" id="btnToggleSession" type="button">
+                {% if telegram_session_is_enabled %}Выключить сессию{% else %}Включить сессию{% endif %}
+            </button>
+
+            <button class="btn" id="btnSave" type="button">Сохранить</button>
+        </div>
+    </div>
+
+    <div class="card">
+
+        <div class="field">
+            <label for="tgPhone">Телефон аккаунта (E.164)</label>
+            <input id="tgPhone"
+                   type="text"
+                   placeholder="+79991234567"
+                   value="{{ telegram_phone or '' }}"
+                   autocomplete="tel"/>
+            <div class="sub">Нужен для отправки кода подтверждения при активации.</div>
+        </div>
+
+        <div class="field">
+            <label for="tgApiId">Telegram API ID</label>
+            <input id="tgApiId"
+                   type="number"
+                   min="1"
+                   placeholder="123456"
+                   value="{{ telegram_api_id or '' }}"/>
+            <div class="sub">Берётся на my.telegram.org → API development tools.</div>
+        </div>
+
+        <div class="field">
+            <div class="field-head">
+                <label for="tgApiHash">Telegram API Hash</label>
+                <button class="btn secondary" id="btnToggleHash" type="button">Показать</button>
+            </div>
+
+            <input id="tgApiHash"
+                   type="password"
+                   autocomplete="off"
+                   placeholder="xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+                   value="{{ telegram_api_hash_mask if telegram_has_hash else (telegram_api_hash or '') }}"/>
+
+            <div class="sub">
+                Если сохранён — поле маскировано. Чтобы заменить — кликни в поле и введи новый hash.
+            </div>
+        </div>
+
+        <div class="field">
+            <label for="openaiResource">OpenAI ресурс</label>
+            <select id="openaiResource">
+                <option value="">— не выбран —</option>
+                {% for r in (openai_resources or []) %}
+                <option value="{{ r.id }}" {% if telegram_openai_resource_id== r.id %}selected{% endif %}>
+                    #{{ r.id }} · {{ r.title or r.code }}
+                </option>
+                {% endfor %}
+            </select>
+        </div>
+
+        <div class="field">
+            <label for="promptResource">Prompt ресурс</label>
+            <select id="promptResource">
+                <option value="">— не выбран —</option>
+                {% for r in (prompt_resources or []) %}
+                <option value="{{ r.id }}" {% if telegram_prompt_resource_id== r.id %}selected{% endif %}>
+                    #{{ r.id }} · {{ r.title or r.code }}
+                </option>
+                {% endfor %}
+            </select>
+        </div>
+
+        <div class="status" id="statusBox" style="display:none;"></div>
+    </div>
+
+    <!-- Модалка: ввод кода подтверждения -->
+    <div class="modal hidden" id="activationModal">
+        <div class="modal-box" style="width: 380px;">
+            <h3 style="margin:0;">Активация Telegram</h3>
+
+            <div class="field">
+                <label for="tgActivateCode">Код подтверждения</label>
+                <input id="tgActivateCode"
+                       type="text"
+                       placeholder="12345"
+                       autocomplete="one-time-code"/>
+                <div class="sub">Код из Telegram/SMS.</div>
+            </div>
+
+            <div class="modal-actions">
+                <button class="btn secondary" id="btnActivationCancel" type="button">Отмена</button>
+                <button class="btn" id="btnActivationConfirm" type="button">Подтвердить</button>
+            </div>
+
+            <div class="status" id="activationStatus" style="display:none;"></div>
+        </div>
+    </div>
 </div>
 
-<p>Заглушка настроек Telegram</p>
-
+<script src="/static/resources/telegram.js"></script>
 {% endblock %}

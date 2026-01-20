@@ -10,9 +10,11 @@ alembic==1.17.2
 jinja2==3.1.6
 apscheduler==3.11.2
 openai==2.14.0
+Telethon==1.42.0
 python-multipart==0.0.21
 
 pydantic~=2.12.5
 pathspec~=1.0.1
 
 PyJWT==2.10.1
+anyio~=4.12.1
