@@ -91,15 +91,19 @@ document.addEventListener("DOMContentLoaded", () => {
         let data = null;
         try {
             data = await res.json();
-        } catch (_) {
-        }
+        } catch (_) {}
 
         if (!res.ok) {
-            const msg = (data && (data.detail || data.error))
+            let msg = (data && (data.detail || data.error))
                 ? (data.detail || data.error)
                 : `HTTP ${res.status}`;
+
+            if (data && typeof data.retry_after === "number") {
+                msg += ` (подожди ${data.retry_after} сек)`;
+            }
             throw new Error(msg);
         }
+
         return data;
     }
 
@@ -130,7 +134,16 @@ document.addEventListener("DOMContentLoaded", () => {
 
     function refreshEnableButton() {
         if (!btnToggleSession) return;
-        btnToggleSession.disabled = !isActivated();
+
+        // Доступна только при активной сессии: скрываем и дизейблим.
+        if (!isActivated()) {
+            btnToggleSession.disabled = true;
+            btnToggleSession.style.display = "none";
+            return;
+        }
+
+        btnToggleSession.style.display = "";
+        btnToggleSession.disabled = false;
     }
 
     function applySessionState(state) {
@@ -257,24 +270,58 @@ document.addEventListener("DOMContentLoaded", () => {
         btnActivationCancel.addEventListener("click", () => closeActivationModal());
     }
 
-    // ACTIVATE: start => send code
+    // ACTIVATE: start => send code (сначала проверка на бэке: ALREADY_ACTIVATED / ALREADY_STARTED / CODE_SENT)
     if (btnActivate) {
         btnActivate.addEventListener("click", async () => {
             clearStatus();
 
             const phone = (phoneEl?.value || "").trim();
             if (!phone) {
-                showStatus("err", "Введи телефон (формат E.164), затем нажми Активация.");
+                showStatus("err", "Укажи телефон (E.164), чтобы запросить код.");
                 return;
             }
 
             btnActivate.disabled = true;
-            showStatus("info", "Отправляю код...");
-
             try {
-                await postJson(`/ui/resources/${resourceId}/telegram/session/activation/start`, {phone});
-                showStatus("ok", "Код отправлен. Введи код подтверждения.");
-                openActivationModal();
+                const resp = await postJson(
+                    `/ui/resources/${resourceId}/telegram/session/activation/start`,
+                    { phone }
+                );
+
+                const d = resp.detail || "";
+
+                if (d === "ALREADY_ACTIVATED") {
+                    applySessionState(resp);
+                    showStatus("ok", "Сессия уже активна. Повторная активация не требуется.");
+                    return;
+                }
+
+                if (d === "ALREADY_STARTED") {
+                    showStatus("ok", "Код уже запрошен ранее. Введи код подтверждения.");
+                    openActivationModal();
+                    return;
+                }
+
+                if (d === "CODE_SENT") {
+                    const metaParts = [
+                        resp.sent_type ? `тип=${resp.sent_type}` : null,
+                        resp.code_len ? `код=${resp.code_len} цифр` : null,
+                        resp.timeout ? `timeout=${resp.timeout}` : null,
+                        resp.next_type ? `next=${resp.next_type}` : null,
+                    ].filter(Boolean);
+
+                    showStatus(
+                        "ok",
+                        metaParts.length
+                            ? `Telegram принял запрос (${metaParts.join(", ")}). Введи код подтверждения.`
+                            : "Telegram принял запрос. Введи код подтверждения."
+                    );
+
+                    openActivationModal();
+                    return;
+                }
+
+                showStatus("err", `Неожиданный ответ start: ${JSON.stringify(resp)}`);
             } catch (e) {
                 showStatus("err", `Ошибка отправки кода: ${e.message}`);
             } finally {
@@ -300,7 +347,7 @@ document.addEventListener("DOMContentLoaded", () => {
             try {
                 const resp = await postJson(
                     `/ui/resources/${resourceId}/telegram/session/activation/confirm`,
-                    {code}
+                    { code }
                 );
                 applySessionState(resp);
                 closeActivationModal();
@@ -319,7 +366,7 @@ document.addEventListener("DOMContentLoaded", () => {
             clearStatus();
 
             if (!isActivated()) {
-                showStatus("err", "Нельзя включить сессию: сначала активируй её через Telegram-код.");
+                showStatus("err", "Нельзя включить: сначала активируй сессию через код Telegram.");
                 return;
             }
 
@@ -330,14 +377,14 @@ document.addEventListener("DOMContentLoaded", () => {
             try {
                 const resp = await postJson(
                     `/ui/resources/${resourceId}/telegram/session/set_enabled`,
-                    {is_enabled: nextEnabled}
+                    { is_enabled: nextEnabled }
                 );
                 applySessionState(resp);
                 showStatus("ok", nextEnabled ? "Сессия включена." : "Сессия выключена.");
             } catch (e) {
                 showStatus("err", `Ошибка переключения: ${e.message}`);
             } finally {
-                btnToggleSession.disabled = !isActivated();
+                refreshEnableButton();
             }
         });
     }

@@ -67,9 +67,10 @@
         <div class="actions">
             <a class="btn secondary" id="btnBack" href="/ui/resources">Назад</a>
 
-            <button class="btn secondary" id="btnActivate" type="button">Активация</button>
+            <button class="btn secondary" id="btnActivate" type="button">Активировать</button>
 
-            <button class="btn secondary" id="btnToggleSession" type="button">
+            <button class="btn secondary" id="btnToggleSession" type="button"
+                    {% if not telegram_session_is_activated %}disabled{% endif %}>
                 {% if telegram_session_is_enabled %}Выключить сессию{% else %}Включить сессию{% endif %}
             </button>
 

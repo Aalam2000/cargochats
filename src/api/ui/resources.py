@@ -16,10 +16,75 @@ from src.api.deps import require_company_from_token
 from src.models.resource import Resource, ResourceSettings
 from src.models.session import Session, SessionSettings
 from src.storage.db import get_db
+import logging
+
+from telethon.errors import FloodWaitError
+from telethon.errors.rpcerrorlist import SendCodeUnavailableError
+
+logging.getLogger("telethon").setLevel(logging.DEBUG)
+
+OPENAI_KEY_FIELD = "openai_api_key"
 
 router = APIRouter()
 templates = Jinja2Templates(directory="src/web/templates")
 
+def _get_allowed_prompt_models() -> list[str]:
+    """
+    Берём список моделей из env OPENAI_ALLOWED_MODELS (csv).
+    Если env пустой — возвращаем дефолт.
+    """
+    import os
+
+    raw = (os.getenv("OPENAI_ALLOWED_MODELS") or "").strip()
+    if not raw:
+        return ["gpt-4o-mini"]
+
+    items = [x.strip() for x in raw.split(",")]
+    return [x for x in items if x]
+
+
+async def _compute_resource_state(db, resource: Resource) -> str:
+    """
+    State values for UI list:
+      - Active: telegram session activated + enabled
+      - Readi: telegram session activated but disabled
+      - False: not activated
+    For non-telegram: Active if resource.is_enabled else False.
+    """
+    if resource.kind != "telegram":
+        return "Active" if bool(getattr(resource, "is_enabled", False)) else "False"
+
+    # telegram: derive from Session/SessionSettings
+    result = await db.execute(
+        select(ResourceSettings).where(ResourceSettings.resource_id == resource.id)
+    )
+    rs = result.scalar_one_or_none()
+    rs_data = dict(rs.data or {}) if (rs and isinstance(rs.data, dict)) else {}
+    session_id = rs_data.get("session_id")
+    if not session_id:
+        return "False"
+
+    result = await db.execute(
+        select(Session).where(
+            Session.id == int(session_id),
+            Session.resource_id == resource.id,
+        )
+    )
+    session = result.scalar_one_or_none()
+    if not session:
+        return "False"
+
+    result = await db.execute(
+        select(SessionSettings).where(SessionSettings.session_id == session.id)
+    )
+    ss = result.scalar_one_or_none()
+    ss_data = dict(ss.data or {}) if (ss and isinstance(ss.data, dict)) else {}
+
+    is_activated = bool(ss_data.get("is_activated")) and bool((ss_data.get("session_string") or "").strip())
+    if not is_activated:
+        return "False"
+
+    return "Active" if bool(session.is_enabled) else "Readi"
 
 @router.get("/resources", response_class=HTMLResponse)
 async def resources_list(
@@ -50,11 +115,16 @@ async def resources_list(
     )
     items = result.scalars().all()
 
+    status_map: dict[int, str] = {}
+    for r in items:
+        status_map[r.id] = await _compute_resource_state(db, r)
+
     return templates.TemplateResponse(
         "ui/resources.html",
         {
             "request": request,
             "items": items,
+            "status_map": status_map,
             "static_ts": int(time.time()),
         },
     )
@@ -90,7 +160,13 @@ async def resource_create(
     db.add(ResourceSettings(resource_id=resource.id))
     await db.commit()
 
-    return JSONResponse({"id": resource.id})
+    # state for table row
+    if kind == "telegram":
+        state = "False"
+    else:
+        state = "Active" if bool(getattr(resource, "is_enabled", False)) else "False"
+
+    return JSONResponse({"id": resource.id, "status": state})
 
 
 @router.delete("/resources/{resource_id}")
@@ -142,6 +218,10 @@ async def resource_detail(
 
     prompt_model = ""
     prompt_system_prompt = ""
+    prompt_history_pairs = None
+    prompt_google_sources: list[str] = []
+    prompt_out_of_scope_enabled = False
+    prompt_models = _get_allowed_prompt_models()
 
     telegram_api_id = None
     telegram_api_hash = ""
@@ -174,6 +254,21 @@ async def resource_detail(
         prompt_model = (data.get("model") or "")
         prompt_system_prompt = (data.get("system_prompt") or "")
 
+        hp = data.get("history_pairs")
+        if hp is not None:
+            try:
+                prompt_history_pairs = int(hp)
+            except Exception:
+                prompt_history_pairs = None
+
+        gs = data.get("google_sources")
+        if isinstance(gs, list):
+            prompt_google_sources = [str(x) for x in gs if str(x).strip()]
+        else:
+            prompt_google_sources = []
+
+        prompt_out_of_scope_enabled = bool(data.get("out_of_scope_enabled"))
+
     if resource.kind == "telegram":
         # current telegram values
         telegram_api_id = data.get("api_id")
@@ -202,7 +297,10 @@ async def resource_detail(
                 )
                 ss = result.scalar_one_or_none()
                 if ss and isinstance(ss.data, dict):
-                    telegram_session_is_activated = bool(ss.data.get("is_activated"))
+                    telegram_session_is_activated = (
+                        bool(ss.data.get("is_activated"))
+                        and bool((ss.data.get("session_string") or "").strip())
+                    )
 
         # lists for selects
         result = await db.execute(
@@ -235,8 +333,13 @@ async def resource_detail(
             "openai_key_mask": openai_key_mask,
             "openai_resources": openai_resources,
 
+            # prompt (важно: теперь всё прокидываем)
             "prompt_model": prompt_model,
             "prompt_system_prompt": prompt_system_prompt,
+            "prompt_history_pairs": prompt_history_pairs,
+            "prompt_google_sources": prompt_google_sources,
+            "prompt_out_of_scope_enabled": prompt_out_of_scope_enabled,
+            "prompt_models": prompt_models,
             "prompt_resources": prompt_resources,
 
             # telegram
@@ -255,8 +358,6 @@ async def resource_detail(
         },
     )
 
-
-OPENAI_KEY_FIELD = "openai_api_key"
 
 
 class OpenAIKeyIn(BaseModel):
@@ -380,6 +481,9 @@ async def openai_key_check(
 class PromptSettingsIn(BaseModel):
     model: str | None = None
     system_prompt: str | None = None
+    history_pairs: int | None = None
+    google_sources: list[str] | None = None
+    out_of_scope_enabled: bool | None = None
 
 
 @router.post("/resources/{resource_id}/prompt/save")
@@ -415,17 +519,54 @@ async def prompt_save(
 
     data = dict(settings.data or {})
 
+    # model
     model = (payload.model or "").strip()
     if model:
         data["model"] = model
     else:
         data.pop("model", None)
 
+    # system_prompt
     system_prompt = (payload.system_prompt or "").strip()
     if system_prompt:
         data["system_prompt"] = system_prompt
     else:
         data.pop("system_prompt", None)
+
+    # history_pairs (0..50)
+    hp = payload.history_pairs
+    if hp is None:
+        data.pop("history_pairs", None)
+    else:
+        if hp < 0 or hp > 50:
+            raise HTTPException(status_code=400, detail="history_pairs must be 0..50")
+        data["history_pairs"] = int(hp)
+
+    # google_sources (clean list)
+    gs = payload.google_sources
+    if not gs:
+        data.pop("google_sources", None)
+    else:
+        cleaned: list[str] = []
+        seen = set()
+        for x in gs:
+            v = (str(x) or "").strip()
+            if not v:
+                continue
+            if v in seen:
+                continue
+            seen.add(v)
+            cleaned.append(v)
+        if cleaned:
+            data["google_sources"] = cleaned
+        else:
+            data.pop("google_sources", None)
+
+    # out_of_scope_enabled (always stored as bool if provided)
+    if payload.out_of_scope_enabled is None:
+        data.pop("out_of_scope_enabled", None)
+    else:
+        data["out_of_scope_enabled"] = bool(payload.out_of_scope_enabled)
 
     settings.data = data
     await db.commit()
@@ -615,23 +756,15 @@ def _get_telegram_creds_or_400(settings_data: dict) -> tuple[int, str]:
 
 @router.post("/resources/{resource_id}/telegram/session/activation/start")
 async def telegram_session_activation_start(
-        resource_id: int,
-        payload: TelegramActivationStartIn,
-        request: Request,
-        _: None = Depends(require_company_from_token),
-        db=Depends(get_db),
+    resource_id: int,
+    payload: TelegramActivationStartIn,
+    request: Request,
+    _: None = Depends(require_company_from_token),
+    db=Depends(get_db),
 ):
-    """
-    REAL start:
-    - sends Telegram code to phone via Telethon
-    - stores phone_code_hash + pending StringSession in SessionSettings.data
-    """
     company_id = request.state.company_id
-    phone = (payload.phone or "").strip()
-    if not phone:
-        raise HTTPException(status_code=400, detail="phone required")
 
-    # resource must exist and be telegram
+    # 1) resource must exist and be telegram
     result = await db.execute(
         select(Resource).where(
             Resource.id == resource_id,
@@ -644,7 +777,7 @@ async def telegram_session_activation_start(
     if resource.kind != "telegram":
         raise HTTPException(status_code=400, detail="Resource is not telegram")
 
-    # settings
+    # 2) settings (ResourceSettings)
     result = await db.execute(
         select(ResourceSettings).where(ResourceSettings.resource_id == resource.id)
     )
@@ -654,37 +787,106 @@ async def telegram_session_activation_start(
         db.add(settings)
         await db.flush()
 
-    data = dict(settings.data or {})
-    api_id, api_hash = _get_telegram_creds_or_400(data)
+    rs_data = dict(settings.data or {})
 
-    # persist phone in resource settings for UI convenience
-    data["phone"] = phone
-    settings.data = data
+    # 3) phone: payload -> saved settings
+    phone = ((getattr(payload, "phone", None) or rs_data.get("phone") or "")).strip()
+    print(f"[tg_start] rid={resource_id} phone={phone!r}")
+    if not phone:
+        raise HTTPException(status_code=400, detail="phone required")
+
+    # persist phone for UI convenience
+    rs_data["phone"] = phone
+    settings.data = rs_data
     await db.flush()
 
+    # 4) creds
+    api_id, api_hash = _get_telegram_creds_or_400(rs_data)
+
+    # 5) session + session settings
     session, ss = await _get_or_create_default_session_for_telegram(db, resource, settings)
+    ss_data = dict(ss.data or {})
 
-    client = TelegramClient(StringSession(""), api_id, api_hash)
-    try:
-        await client.connect()
-        sent = await client.send_code_request(phone)
-
-        ss_data = dict(ss.data or {})
-        ss_data["phone"] = phone
-        ss_data["phone_code_hash"] = sent.phone_code_hash
-        ss_data["pending_session_string"] = client.session.save()
-        ss_data["is_activated"] = False
-        # do NOT auto-enable here
-        ss.data = ss_data
-
-        await db.commit()
+    # --- GUARDS (ключевое) ---
+    # A) already activated -> do nothing
+    if bool(ss_data.get("is_activated")) and (ss_data.get("session_string") or "").strip():
         return JSONResponse(
             {
+                "detail": "ALREADY_ACTIVATED",
+                "session_id": session.id,
+                "is_enabled": bool(session.is_enabled),
+                "is_activated": True,
+            }
+        )
+
+    # B) activation already started recently -> do not resend (иначе быстро словишь SendCodeUnavailableError)
+    now = int(time.time())
+    started_at = int(ss_data.get("activation_started_at") or 0)
+    pending_hash = (ss_data.get("phone_code_hash") or "").strip()
+    pending_session_string = (ss_data.get("pending_session_string") or "").strip()
+
+    PENDING_TTL_SECONDS = 120
+    if pending_hash and pending_session_string and started_at and (now - started_at) < PENDING_TTL_SECONDS:
+        return JSONResponse(
+            {
+                "detail": "ALREADY_STARTED",
                 "session_id": session.id,
                 "is_enabled": bool(session.is_enabled),
                 "is_activated": False,
             }
         )
+
+    # 6) telethon send code
+    client = TelegramClient(StringSession(""), api_id, api_hash)
+    try:
+        await client.connect()
+
+        t0 = time.monotonic()
+        sent = await client.send_code_request(phone)
+        dt_ms = int((time.monotonic() - t0) * 1000)
+
+        # sent.type is IMPORTANT: SentCodeTypeApp means "code delivered INSIDE Telegram app" (not SMS)
+        sent_type = type(sent.type).__name__ if getattr(sent, "type", None) else None
+        next_type = type(sent.next_type).__name__ if getattr(sent, "next_type", None) else None
+        code_len = getattr(sent, "type", None).length if getattr(sent, "type", None) else None
+        timeout = getattr(sent, "timeout", None)
+
+        print(
+            f"[tg_start] ok rid={resource_id} dt_ms={dt_ms} sent_type={sent_type} "
+            f"next_type={next_type} code_len={code_len} timeout={timeout} hash={sent.phone_code_hash!r}"
+        )
+
+        ss_data["phone"] = phone
+        ss_data["phone_code_hash"] = sent.phone_code_hash
+        ss_data["pending_session_string"] = client.session.save()
+        ss_data["activation_started_at"] = now
+        ss_data["is_activated"] = False
+        ss.data = ss_data
+
+        await db.commit()
+        return JSONResponse(
+            {
+                "detail": "CODE_SENT",
+                "session_id": session.id,
+                "is_enabled": bool(session.is_enabled),
+                "is_activated": False,
+                "sent_type": sent_type,
+                "next_type": next_type,
+                "code_len": code_len,
+                "timeout": timeout,
+            }
+        )
+
+    except FloodWaitError as e:
+        # Telegram explicitly says "wait N seconds"
+        await db.rollback()
+        raise HTTPException(status_code=429, detail=f"FLOOD_WAIT:{getattr(e, 'seconds', 0)}")
+
+    except SendCodeUnavailableError:
+        # You exhausted available resend options (обычно из-за частых повторов)
+        await db.rollback()
+        raise HTTPException(status_code=429, detail="SEND_CODE_UNAVAILABLE")
+
     finally:
         await client.disconnect()
 

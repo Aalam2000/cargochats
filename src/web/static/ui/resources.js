@@ -39,6 +39,7 @@ document.addEventListener("DOMContentLoaded", () => {
         }
 
         const data = await r.json();
+        const status = (data && data.status) ? data.status : "False";
 
         const tr = document.createElement("tr");
         tr.dataset.id = data.id;
@@ -47,7 +48,7 @@ document.addEventListener("DOMContentLoaded", () => {
             <td>${data.id}</td>
             <td>${kind}</td>
             <td>${title}</td>
-            <td>true</td>
+            <td>${status}</td>
             <td class="delete-cell">🗑</td>
         `;
         tableBody.appendChild(tr);

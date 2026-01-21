@@ -16,7 +16,7 @@
           <th>ID</th>
           <th>Тип ресурса</th>
           <th>Название</th>
-          <th>Enabled</th>
+          <th>Состояние</th>
           <th>🗑</th>
         </tr>
       </thead>
@@ -26,7 +26,7 @@
           <td>{{ r.id }}</td>
           <td>{{ r.kind }}</td>
           <td>{{ r.title or "" }}</td>
-          <td>{{ r.is_enabled }}</td>
+          <td>{{ (status_map.get(r.id) if status_map else "False") }}</td>
           <td class="delete-cell">🗑</td>
         </tr>
         {% endfor %}
