@@ -3,16 +3,18 @@ from __future__ import annotations
 import asyncio
 import os
 from dataclasses import dataclass
-from typing import Any, Dict, Tuple
+from typing import Any, Dict
 
 from sqlalchemy import select
 
+from telethon import TelegramClient, events
+from telethon.sessions import StringSession
+
+from src.core.chat_engine import generate_reply
+from src.core.queues import InboundMessage, SessionQueue
 from src.models.resource import Resource, ResourceSettings
 from src.models.session import Session, SessionSettings
 from src.storage.db import get_db
-
-from telethon import TelegramClient, events
-from telethon.sessions import StringSession
 
 
 SYNC_INTERVAL_SEC = int(os.getenv("WORKER_SYNC_INTERVAL_SEC", "5"))
@@ -26,9 +28,8 @@ class TgRuntime:
     task: asyncio.Task
 
 
-def _cfg_sig(api_id: int, api_hash: str, session_string: str) -> str:
-    # если настройки изменились — перезапускаем клиента
-    return f"{api_id}:{api_hash}:{session_string}"
+def _cfg_sig(api_id: int, api_hash: str, session_string: str, openai_resource_id: int | None) -> str:
+    return f"{api_id}:{api_hash}:{session_string}:{openai_resource_id or ''}"
 
 
 async def _get_db_once():
@@ -47,13 +48,13 @@ async def _get_db_once():
 async def fetch_active_tg_sessions() -> Dict[int, Dict[str, Any]]:
     """
     Возвращает активные Telegram-сессии:
-    session_id -> {api_id, api_hash, session_string}
+    session_id -> {company_id, api_id, api_hash, session_string, openai_resource_id}
     """
     async for db in _get_db_once():
         stmt = (
             select(
+                Resource.company_id,
                 Resource.id,
-                Resource.kind,
                 Resource.is_enabled,
                 ResourceSettings.data,
                 Session.id,
@@ -72,8 +73,8 @@ async def fetch_active_tg_sessions() -> Dict[int, Dict[str, Any]]:
 
     out: Dict[int, Dict[str, Any]] = {}
     for (
+        company_id,
         _resource_id,
-        _kind,
         resource_enabled,
         rs_data,
         session_id,
@@ -93,6 +94,7 @@ async def fetch_active_tg_sessions() -> Dict[int, Dict[str, Any]]:
 
         api_id = rs_data.get("api_id")
         api_hash = (rs_data.get("api_hash") or "").strip()
+        openai_resource_id = rs_data.get("openai_resource_id")
 
         is_activated = bool(ss_data.get("is_activated"))
         session_string = (ss_data.get("session_string") or "").strip()
@@ -101,28 +103,85 @@ async def fetch_active_tg_sessions() -> Dict[int, Dict[str, Any]]:
             continue
 
         out[int(session_id)] = {
+            "company_id": int(company_id),
             "api_id": int(api_id),
             "api_hash": api_hash,
             "session_string": session_string,
+            "openai_resource_id": int(openai_resource_id) if openai_resource_id else None,
         }
 
     return out
 
 
-async def tg_echo_loop(session_id: int, client: TelegramClient, stop: asyncio.Event) -> None:
+async def tg_openai_loop(session_id: int, cfg: Dict[str, Any], client: TelegramClient, stop: asyncio.Event) -> None:
+    """
+    1 Telegram-сессия = 1 очередь = 1 consumer (строгий порядок).
+    """
+    queue = SessionQueue(maxsize=0)
+
     @client.on(events.NewMessage(incoming=True))
     async def _on_message(event: events.NewMessage.Event) -> None:
-        # MVP: только приватные, чтобы не эхолотить группы/каналы
+        if stop.is_set():
+            return
         if not event.is_private:
             return
+
+        msg = getattr(event, "message", None)
+        if not msg:
+            return
+
         text = (event.raw_text or "").strip()
         if not text:
             return
-        await event.reply(text)
+
+        chat_id = int(getattr(event, "chat_id", 0) or 0)
+        message_id = int(getattr(msg, "id", 0) or 0)
+        if not chat_id or not message_id:
+            return
+
+        await queue.put(InboundMessage(chat_id=chat_id, message_id=message_id, text=text))
+
+    async def _consumer() -> None:
+        import traceback
+
+        while not stop.is_set():
+            try:
+                inbound = await queue.get(timeout=0.5)
+            except asyncio.TimeoutError:
+                continue
+
+            try:
+                print(f"[worker][tg:{session_id}] inbound chat_id={inbound.chat_id} msg_id={inbound.message_id}")
+                async for db in _get_db_once():
+                    reply = await generate_reply(
+                        db,
+                        company_id=int(cfg["company_id"]),
+                        openai_resource_id=cfg.get("openai_resource_id"),
+                        user_text=inbound.text,
+                    )
+            except Exception as e:
+                tb = traceback.format_exc()
+                print(f"[worker][tg:{session_id}] OPENAI_ERROR: {e.__class__.__name__}: {e}\n{tb}")
+                # в чат даём коротко, в логах будет полный текст
+                msg = (str(e) or e.__class__.__name__).strip()
+                reply = f"Ошибка OpenAI: {msg[:180]}"
+            finally:
+                # если generate_reply упал — очередь всё равно надо закрыть
+                try:
+                    queue.task_done()
+                except Exception:
+                    pass
+
+            try:
+                await client.send_message(inbound.chat_id, reply, reply_to=inbound.message_id)
+                print(f"[worker][tg:{session_id}] sent reply_len={len(reply or '')}")
+            except Exception as e:
+                print(f"[worker][tg:{session_id}] send error: {e.__class__.__name__}: {e}")
 
     await client.connect()
     print(f"[worker][tg:{session_id}] connected")
 
+    consumer_task = asyncio.create_task(_consumer())
     run_task = asyncio.create_task(client.run_until_disconnected())
     stop_task = asyncio.create_task(stop.wait())
 
@@ -132,7 +191,6 @@ async def tg_echo_loop(session_id: int, client: TelegramClient, stop: asyncio.Ev
             return_when=asyncio.FIRST_COMPLETED,
         )
 
-        # если выключили — отключаемся
         if stop_task in done:
             await client.disconnect()
 
@@ -140,6 +198,8 @@ async def tg_echo_loop(session_id: int, client: TelegramClient, stop: asyncio.Ev
             t.cancel()
 
     finally:
+        stop.set()
+        consumer_task.cancel()
         try:
             await client.disconnect()
         except Exception:
@@ -173,7 +233,7 @@ async def _sync_runtimes(runtimes: Dict[int, TgRuntime]) -> None:
             await _stop_runtime(rt)
             continue
 
-        sig = _cfg_sig(cfg["api_id"], cfg["api_hash"], cfg["session_string"])
+        sig = _cfg_sig(cfg["api_id"], cfg["api_hash"], cfg["session_string"], cfg.get("openai_resource_id"))
         if sig != rt.cfg_sig:
             runtimes.pop(sid, None)
             await _stop_runtime(rt)
@@ -189,26 +249,36 @@ async def _sync_runtimes(runtimes: Dict[int, TgRuntime]) -> None:
             cfg["api_id"],
             cfg["api_hash"],
         )
-        sig = _cfg_sig(cfg["api_id"], cfg["api_hash"], cfg["session_string"])
-        task = asyncio.create_task(tg_echo_loop(sid, client, stop))
+        sig = _cfg_sig(cfg["api_id"], cfg["api_hash"], cfg["session_string"], cfg.get("openai_resource_id"))
+        task = asyncio.create_task(tg_openai_loop(sid, cfg, client, stop))
 
         runtimes[sid] = TgRuntime(cfg_sig=sig, client=client, stop=stop, task=task)
 
         def _cleanup(t: asyncio.Task, _sid: int = sid) -> None:
+            # при hot-reload задачи часто отменяются — это не ошибка
+            if t.cancelled():
+                return
+
             rt2 = runtimes.get(_sid)
-            if rt2 and rt2.task is t and t.done():
-                # если упало само — убираем, на следующей синхронизации поднимем снова
-                runtimes.pop(_sid, None)
+            if not (rt2 and rt2.task is t and t.done()):
+                return
+
+            runtimes.pop(_sid, None)
+
+            try:
                 exc = t.exception()
-                if exc:
-                    print(f"[worker][tg:{_sid}] crashed: {exc.__class__.__name__}: {exc}")
+            except asyncio.CancelledError:
+                return
+
+            if exc:
+                print(f"[worker][tg:{_sid}] crashed: {exc.__class__.__name__}: {exc}")
 
         task.add_done_callback(_cleanup)
 
 
 async def main_async() -> None:
     runtimes: Dict[int, TgRuntime] = {}
-    print("[worker] started (telegram echo)")
+    print("[worker] started (telegram openai)")
 
     while True:
         try:
