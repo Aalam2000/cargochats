@@ -576,3 +576,53 @@ textarea { resize: vertical; min-height: 110px; }
         font-size: 1rem;
     }
 }
+/* ===== Top header bar (UI) ===== */
+.topbar {
+    height: 56px;
+    display: flex;
+    align-items: center;
+    gap: 14px;
+
+    padding: 0 18px;
+    background: var(--bg-sidebar);
+    border-bottom: 1px solid var(--border);
+    box-shadow: var(--shadow);
+    box-sizing: border-box;
+}
+
+.logo-link {
+    display: flex;
+    align-items: center;
+    text-decoration: none;
+}
+
+.top-logo {
+    height: 32px;
+    width: auto;
+    object-fit: contain;
+}
+
+.top-title {
+    font-weight: 700;
+    color: var(--accent-dark);
+    white-space: nowrap;
+}
+
+.top-nav {
+    margin-left: auto;
+    display: flex;
+    align-items: center;
+    gap: 14px;
+}
+
+.top-nav a {
+    text-decoration: none;
+    color: var(--text-main);
+    font-weight: 600;
+    padding: 8px 10px;
+    border-radius: 10px;
+}
+
+.top-nav a:hover {
+    background: rgba(0, 123, 255, 0.10);
+}

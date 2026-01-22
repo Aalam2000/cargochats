@@ -14,9 +14,14 @@
 </head>
 
 <body>
-  <header>
-    <div class="muted">CargoChats UI</div>
-    <nav>
+  <header class="topbar">
+    <a class="logo-link" href="https://crm.dadaexpo.ru/" title="Вернуться на CRM">
+      <img class="top-logo" src="/static/img/logo.png" alt="CRM">
+    </a>
+
+    <div class="top-title muted">CargoChats UI</div>
+
+    <nav class="top-nav">
       <a href="/ui/resources">Resources</a>
       <a href="/ui/dialogs">Dialogs</a>
       <a href="/ui/events">Events</a>
@@ -24,5 +29,24 @@
   </header>
 
   {% block content %}{% endblock %}
+
+  <script>
+    // Клиентский редирект при 401/403 на XHR/fetch запросах (истёк токен / ошибка авторизации).
+    // Серверный редирект для прямого захода на страницу сделаем после того, как ты пришлёшь deps/app файлы.
+    (function () {
+      const CRM_HOME = "https://crm.dadaexpo.ru/";
+      const origFetch = window.fetch;
+      if (!origFetch) return;
+
+      window.fetch = async function (...args) {
+        const resp = await origFetch.apply(this, args);
+        if (resp && (resp.status === 401 || resp.status === 403)) {
+          window.location.href = CRM_HOME;
+          return resp;
+        }
+        return resp;
+      };
+    })();
+  </script>
 </body>
 </html>
