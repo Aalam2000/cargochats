@@ -6,7 +6,6 @@ from dataclasses import dataclass
 from typing import Any, Dict
 
 from sqlalchemy import select
-
 from telethon import TelegramClient, events
 from telethon.sessions import StringSession
 
@@ -15,7 +14,7 @@ from src.core.queues import InboundMessage, SessionQueue
 from src.models.resource import Resource, ResourceSettings
 from src.models.session import Session, SessionSettings
 from src.storage.db import get_db
-
+from src.storage.messages import save_inbound, save_outbound
 
 SYNC_INTERVAL_SEC = int(os.getenv("WORKER_SYNC_INTERVAL_SEC", "5"))
 
@@ -28,8 +27,14 @@ class TgRuntime:
     task: asyncio.Task
 
 
-def _cfg_sig(api_id: int, api_hash: str, session_string: str, openai_resource_id: int | None) -> str:
-    return f"{api_id}:{api_hash}:{session_string}:{openai_resource_id or ''}"
+def _cfg_sig(
+    api_id: int,
+    api_hash: str,
+    session_string: str,
+    openai_resource_id: int | None,
+    prompt_resource_id: int | None = None,
+) -> str:
+    return f"{api_id}:{api_hash}:{session_string}:{openai_resource_id or ''}:{prompt_resource_id or ''}"
 
 
 async def _get_db_once():
@@ -48,7 +53,10 @@ async def _get_db_once():
 async def fetch_active_tg_sessions() -> Dict[int, Dict[str, Any]]:
     """
     Возвращает активные Telegram-сессии:
-    session_id -> {company_id, api_id, api_hash, session_string, openai_resource_id}
+    session_id -> {
+        company_id, resource_id, api_id, api_hash, session_string,
+        openai_resource_id, prompt_resource_id
+    }
     """
     async for db in _get_db_once():
         stmt = (
@@ -73,14 +81,14 @@ async def fetch_active_tg_sessions() -> Dict[int, Dict[str, Any]]:
 
     out: Dict[int, Dict[str, Any]] = {}
     for (
-        company_id,
-        _resource_id,
-        resource_enabled,
-        rs_data,
-        session_id,
-        session_enabled,
-        ss_enabled,
-        ss_data,
+            company_id,
+            _resource_id,
+            resource_enabled,
+            rs_data,
+            session_id,
+            session_enabled,
+            ss_enabled,
+            ss_data,
     ) in rows:
         if not resource_enabled:
             continue
@@ -95,6 +103,7 @@ async def fetch_active_tg_sessions() -> Dict[int, Dict[str, Any]]:
         api_id = rs_data.get("api_id")
         api_hash = (rs_data.get("api_hash") or "").strip()
         openai_resource_id = rs_data.get("openai_resource_id")
+        prompt_resource_id = rs_data.get("prompt_resource_id")
 
         is_activated = bool(ss_data.get("is_activated"))
         session_string = (ss_data.get("session_string") or "").strip()
@@ -104,10 +113,12 @@ async def fetch_active_tg_sessions() -> Dict[int, Dict[str, Any]]:
 
         out[int(session_id)] = {
             "company_id": int(company_id),
+            "resource_id": int(_resource_id),
             "api_id": int(api_id),
             "api_hash": api_hash,
             "session_string": session_string,
             "openai_resource_id": int(openai_resource_id) if openai_resource_id else None,
+            "prompt_resource_id": int(prompt_resource_id) if prompt_resource_id else None,
         }
 
     return out
@@ -118,6 +129,7 @@ async def tg_openai_loop(session_id: int, cfg: Dict[str, Any], client: TelegramC
     1 Telegram-сессия = 1 очередь = 1 consumer (строгий порядок).
     + ставим "прочитано"
     + показываем "печатает..." пока формируем ответ
+    + сохраняем in/out в БД и подмешиваем историю N пар
     """
     queue = SessionQueue(maxsize=0)
 
@@ -147,9 +159,7 @@ async def tg_openai_loop(session_id: int, cfg: Dict[str, Any], client: TelegramC
         if not chat_id or not message_id:
             return
 
-        # ✅ сразу ставим "прочитано" (не блокируем хендлер)
         asyncio.create_task(_safe_read_ack(chat_id, message_id))
-
         await queue.put(InboundMessage(chat_id=chat_id, message_id=message_id, text=text))
 
     async def _consumer() -> None:
@@ -162,10 +172,25 @@ async def tg_openai_loop(session_id: int, cfg: Dict[str, Any], client: TelegramC
                 continue
 
             reply = ""
+            in_db_msg_id: int | None = None
+
             try:
                 print(f"[worker][tg:{session_id}] inbound chat_id={inbound.chat_id} msg_id={inbound.message_id}")
 
-                # ✅ показываем "typing" пока идёт генерация ответа
+                # 1) save inbound (сразу, отдельно)
+                async for db in _get_db_once():
+                    msg_in = await save_inbound(
+                        db,
+                        company_id=int(cfg["company_id"]),
+                        resource_id=int(cfg["resource_id"]),
+                        session_id=int(session_id),
+                        chat_id=int(inbound.chat_id),
+                        tg_message_id=int(inbound.message_id),
+                        text=inbound.text,
+                    )
+                    in_db_msg_id = int(getattr(msg_in, "id", 0) or 0) or None
+
+                # 2..3) history + OpenAI (typing)
                 async with client.action(inbound.chat_id, "typing"):
                     async for db in _get_db_once():
                         reply = await generate_reply(
@@ -173,6 +198,11 @@ async def tg_openai_loop(session_id: int, cfg: Dict[str, Any], client: TelegramC
                             company_id=int(cfg["company_id"]),
                             openai_resource_id=cfg.get("openai_resource_id"),
                             user_text=inbound.text,
+                            prompt_resource_id=cfg.get("prompt_resource_id"),
+                            resource_id=int(cfg["resource_id"]),
+                            session_id=int(session_id),
+                            chat_id=int(inbound.chat_id),
+                            current_in_message_id=in_db_msg_id,
                         )
 
             except Exception as e:
@@ -181,12 +211,30 @@ async def tg_openai_loop(session_id: int, cfg: Dict[str, Any], client: TelegramC
                 msg = (str(e) or e.__class__.__name__).strip()
                 reply = f"Ошибка OpenAI: {msg[:180]}"
 
+            sent_id: int | None = None
             try:
-                await client.send_message(inbound.chat_id, reply)
+                sent = await client.send_message(inbound.chat_id, reply)
+                sent_id = int(getattr(sent, "id", 0) or 0) or None
                 print(f"[worker][tg:{session_id}] sent reply_len={len(reply or '')}")
             except Exception as e:
                 print(f"[worker][tg:{session_id}] send error: {e.__class__.__name__}: {e}")
             finally:
+                # 5) save outbound только если отправили
+                if sent_id:
+                    try:
+                        async for db in _get_db_once():
+                            await save_outbound(
+                                db,
+                                company_id=int(cfg["company_id"]),
+                                resource_id=int(cfg["resource_id"]),
+                                session_id=int(session_id),
+                                chat_id=int(inbound.chat_id),
+                                text=reply,
+                                tg_message_id=sent_id,
+                            )
+                    except Exception as e:
+                        print(f"[worker][tg:{session_id}] save_outbound error: {e.__class__.__name__}: {e}")
+
                 try:
                     queue.task_done()
                 except Exception:
@@ -292,14 +340,17 @@ async def _sync_runtimes(runtimes: Dict[int, TgRuntime]) -> None:
 
 async def main_async() -> None:
     runtimes: Dict[int, TgRuntime] = {}
-    print("[worker] started (telegram openai)")
 
     while True:
         try:
             await _sync_runtimes(runtimes)
         except Exception as e:
             print(f"[worker] sync error: {e.__class__.__name__}: {e}")
-        await asyncio.sleep(SYNC_INTERVAL_SEC)
+
+        try:
+            await asyncio.sleep(SYNC_INTERVAL_SEC)
+        except asyncio.CancelledError:
+            return
 
 
 def main() -> None:
@@ -308,7 +359,6 @@ def main() -> None:
     except KeyboardInterrupt:
         # нормальная остановка при watchfiles reload / Ctrl+C
         pass
-
 
 
 if __name__ == "__main__":
