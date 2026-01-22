@@ -295,7 +295,7 @@ async def _sync_runtimes(runtimes: Dict[int, TgRuntime]) -> None:
             await _stop_runtime(rt)
             continue
 
-        sig = _cfg_sig(cfg["api_id"], cfg["api_hash"], cfg["session_string"], cfg.get("openai_resource_id"))
+        sig = _cfg_sig(cfg["api_id"], cfg["api_hash"], cfg["session_string"], cfg.get("openai_resource_id"), cfg.get("prompt_resource_id"))
         if sig != rt.cfg_sig:
             runtimes.pop(sid, None)
             await _stop_runtime(rt)
@@ -311,7 +311,7 @@ async def _sync_runtimes(runtimes: Dict[int, TgRuntime]) -> None:
             cfg["api_id"],
             cfg["api_hash"],
         )
-        sig = _cfg_sig(cfg["api_id"], cfg["api_hash"], cfg["session_string"], cfg.get("openai_resource_id"))
+        sig = _cfg_sig(cfg["api_id"], cfg["api_hash"], cfg["session_string"], cfg.get("openai_resource_id"), cfg.get("prompt_resource_id"))
         task = asyncio.create_task(tg_openai_loop(sid, cfg, client, stop))
 
         runtimes[sid] = TgRuntime(cfg_sig=sig, client=client, stop=stop, task=task)
