@@ -292,12 +292,14 @@ async def _sync_runtimes(runtimes: Dict[int, TgRuntime]) -> None:
 
 async def main_async() -> None:
     runtimes: Dict[int, TgRuntime] = {}
+    print("[worker] started (telegram openai)")
 
     while True:
         try:
-            await asyncio.sleep(SYNC_INTERVAL_SEC)
-        except asyncio.CancelledError:
-            return
+            await _sync_runtimes(runtimes)
+        except Exception as e:
+            print(f"[worker] sync error: {e.__class__.__name__}: {e}")
+        await asyncio.sleep(SYNC_INTERVAL_SEC)
 
 
 def main() -> None:
