@@ -32,7 +32,7 @@ def _cfg_sig(
     api_hash: str,
     session_string: str,
     openai_resource_id: int | None,
-    prompt_resource_id: int | None = None,
+    prompt_resource_id: int | None,
 ) -> str:
     return f"{api_id}:{api_hash}:{session_string}:{openai_resource_id or ''}:{prompt_resource_id or ''}"
 
@@ -53,10 +53,7 @@ async def _get_db_once():
 async def fetch_active_tg_sessions() -> Dict[int, Dict[str, Any]]:
     """
     Возвращает активные Telegram-сессии:
-    session_id -> {
-        company_id, resource_id, api_id, api_hash, session_string,
-        openai_resource_id, prompt_resource_id
-    }
+    session_id -> {company_id, api_id, api_hash, session_string, openai_resource_id, prompt_resource_id}
     """
     async for db in _get_db_once():
         stmt = (
@@ -81,14 +78,14 @@ async def fetch_active_tg_sessions() -> Dict[int, Dict[str, Any]]:
 
     out: Dict[int, Dict[str, Any]] = {}
     for (
-            company_id,
-            _resource_id,
-            resource_enabled,
-            rs_data,
-            session_id,
-            session_enabled,
-            ss_enabled,
-            ss_data,
+        company_id,
+        _resource_id,
+        resource_enabled,
+        rs_data,
+        session_id,
+        session_enabled,
+        ss_enabled,
+        ss_data,
     ) in rows:
         if not resource_enabled:
             continue
@@ -113,7 +110,6 @@ async def fetch_active_tg_sessions() -> Dict[int, Dict[str, Any]]:
 
         out[int(session_id)] = {
             "company_id": int(company_id),
-            "resource_id": int(_resource_id),
             "api_id": int(api_id),
             "api_hash": api_hash,
             "session_string": session_string,
@@ -129,7 +125,6 @@ async def tg_openai_loop(session_id: int, cfg: Dict[str, Any], client: TelegramC
     1 Telegram-сессия = 1 очередь = 1 consumer (строгий порядок).
     + ставим "прочитано"
     + показываем "печатает..." пока формируем ответ
-    + сохраняем in/out в БД и подмешиваем историю N пар
     """
     queue = SessionQueue(maxsize=0)
 
@@ -172,37 +167,17 @@ async def tg_openai_loop(session_id: int, cfg: Dict[str, Any], client: TelegramC
                 continue
 
             reply = ""
-            in_db_msg_id: int | None = None
-
             try:
                 print(f"[worker][tg:{session_id}] inbound chat_id={inbound.chat_id} msg_id={inbound.message_id}")
 
-                # 1) save inbound (сразу, отдельно)
-                async for db in _get_db_once():
-                    msg_in = await save_inbound(
-                        db,
-                        company_id=int(cfg["company_id"]),
-                        resource_id=int(cfg["resource_id"]),
-                        session_id=int(session_id),
-                        chat_id=int(inbound.chat_id),
-                        tg_message_id=int(inbound.message_id),
-                        text=inbound.text,
-                    )
-                    in_db_msg_id = int(getattr(msg_in, "id", 0) or 0) or None
-
-                # 2..3) history + OpenAI (typing)
                 async with client.action(inbound.chat_id, "typing"):
                     async for db in _get_db_once():
                         reply = await generate_reply(
                             db,
                             company_id=int(cfg["company_id"]),
                             openai_resource_id=cfg.get("openai_resource_id"),
-                            user_text=inbound.text,
                             prompt_resource_id=cfg.get("prompt_resource_id"),
-                            resource_id=int(cfg["resource_id"]),
-                            session_id=int(session_id),
-                            chat_id=int(inbound.chat_id),
-                            current_in_message_id=in_db_msg_id,
+                            user_text=inbound.text,
                         )
 
             except Exception as e:
@@ -211,30 +186,12 @@ async def tg_openai_loop(session_id: int, cfg: Dict[str, Any], client: TelegramC
                 msg = (str(e) or e.__class__.__name__).strip()
                 reply = f"Ошибка OpenAI: {msg[:180]}"
 
-            sent_id: int | None = None
             try:
-                sent = await client.send_message(inbound.chat_id, reply)
-                sent_id = int(getattr(sent, "id", 0) or 0) or None
+                await client.send_message(inbound.chat_id, reply)
                 print(f"[worker][tg:{session_id}] sent reply_len={len(reply or '')}")
             except Exception as e:
                 print(f"[worker][tg:{session_id}] send error: {e.__class__.__name__}: {e}")
             finally:
-                # 5) save outbound только если отправили
-                if sent_id:
-                    try:
-                        async for db in _get_db_once():
-                            await save_outbound(
-                                db,
-                                company_id=int(cfg["company_id"]),
-                                resource_id=int(cfg["resource_id"]),
-                                session_id=int(session_id),
-                                chat_id=int(inbound.chat_id),
-                                text=reply,
-                                tg_message_id=sent_id,
-                            )
-                    except Exception as e:
-                        print(f"[worker][tg:{session_id}] save_outbound error: {e.__class__.__name__}: {e}")
-
                 try:
                     queue.task_done()
                 except Exception:
@@ -295,7 +252,13 @@ async def _sync_runtimes(runtimes: Dict[int, TgRuntime]) -> None:
             await _stop_runtime(rt)
             continue
 
-        sig = _cfg_sig(cfg["api_id"], cfg["api_hash"], cfg["session_string"], cfg.get("openai_resource_id"), cfg.get("prompt_resource_id"))
+        sig = _cfg_sig(
+            cfg["api_id"],
+            cfg["api_hash"],
+            cfg["session_string"],
+            cfg.get("openai_resource_id"),
+            cfg.get("prompt_resource_id"),
+        )
         if sig != rt.cfg_sig:
             runtimes.pop(sid, None)
             await _stop_runtime(rt)
@@ -311,13 +274,18 @@ async def _sync_runtimes(runtimes: Dict[int, TgRuntime]) -> None:
             cfg["api_id"],
             cfg["api_hash"],
         )
-        sig = _cfg_sig(cfg["api_id"], cfg["api_hash"], cfg["session_string"], cfg.get("openai_resource_id"), cfg.get("prompt_resource_id"))
+        sig = _cfg_sig(
+            cfg["api_id"],
+            cfg["api_hash"],
+            cfg["session_string"],
+            cfg.get("openai_resource_id"),
+            cfg.get("prompt_resource_id"),
+        )
         task = asyncio.create_task(tg_openai_loop(sid, cfg, client, stop))
 
         runtimes[sid] = TgRuntime(cfg_sig=sig, client=client, stop=stop, task=task)
 
         def _cleanup(t: asyncio.Task, _sid: int = sid) -> None:
-            # при hot-reload задачи часто отменяются — это не ошибка
             if t.cancelled():
                 return
 

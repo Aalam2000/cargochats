@@ -16,7 +16,7 @@ class ChatIn(BaseModel):
     text: str
     client_external_id: str | None = None
     resource: str | None = None   # ожидаем: Resource.id (число) ИЛИ Resource.code
-    session: str | None = None    # пока не используем (история будет на шаге 2)
+    session: str | None = None    # пока не используем
 
 
 class ChatOut(BaseModel):
@@ -37,18 +37,21 @@ async def _resolve_resource(db, resource_ref: str) -> Resource | None:
     return res.scalar_one_or_none()
 
 
-async def _get_openai_resource_id(db, resource_id: int) -> int | None:
+async def _get_resource_refs(db, resource_id: int) -> tuple[int | None, int | None]:
     res = await db.execute(
         select(ResourceSettings.data).where(ResourceSettings.resource_id == resource_id).limit(1)
     )
     data = res.scalar_one_or_none() or {}
     if not isinstance(data, dict):
-        return None
-    rid = data.get("openai_resource_id")
-    try:
-        return int(rid) if rid else None
-    except Exception:
-        return None
+        return None, None
+
+    def _as_int(v) -> int | None:
+        try:
+            return int(v) if v else None
+        except Exception:
+            return None
+
+    return _as_int(data.get("openai_resource_id")), _as_int(data.get("prompt_resource_id"))
 
 
 @router.post("", response_model=ChatOut, dependencies=[Depends(require_api_key)])
@@ -65,11 +68,13 @@ async def chat(inp: ChatIn, db=Depends(get_db)):
     if not resource:
         return ChatOut(reply="Ресурс не найден.")
 
-    openai_resource_id = await _get_openai_resource_id(db, resource.id)
+    openai_resource_id, prompt_resource_id = await _get_resource_refs(db, resource.id)
+
     reply = await generate_reply(
         db,
         company_id=int(resource.company_id),
         openai_resource_id=openai_resource_id,
+        prompt_resource_id=prompt_resource_id,
         user_text=text,
     )
     return ChatOut(reply=reply)
