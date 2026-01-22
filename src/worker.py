@@ -116,8 +116,16 @@ async def fetch_active_tg_sessions() -> Dict[int, Dict[str, Any]]:
 async def tg_openai_loop(session_id: int, cfg: Dict[str, Any], client: TelegramClient, stop: asyncio.Event) -> None:
     """
     1 Telegram-сессия = 1 очередь = 1 consumer (строгий порядок).
+    + ставим "прочитано"
+    + показываем "печатает..." пока формируем ответ
     """
     queue = SessionQueue(maxsize=0)
+
+    async def _safe_read_ack(chat_id: int, message_id: int) -> None:
+        try:
+            await client.send_read_acknowledge(chat_id, max_id=message_id)
+        except Exception:
+            pass
 
     @client.on(events.NewMessage(incoming=True))
     async def _on_message(event: events.NewMessage.Event) -> None:
@@ -139,6 +147,9 @@ async def tg_openai_loop(session_id: int, cfg: Dict[str, Any], client: TelegramC
         if not chat_id or not message_id:
             return
 
+        # ✅ сразу ставим "прочитано" (не блокируем хендлер)
+        asyncio.create_task(_safe_read_ack(chat_id, message_id))
+
         await queue.put(InboundMessage(chat_id=chat_id, message_id=message_id, text=text))
 
     async def _consumer() -> None:
@@ -150,33 +161,36 @@ async def tg_openai_loop(session_id: int, cfg: Dict[str, Any], client: TelegramC
             except asyncio.TimeoutError:
                 continue
 
+            reply = ""
             try:
                 print(f"[worker][tg:{session_id}] inbound chat_id={inbound.chat_id} msg_id={inbound.message_id}")
-                async for db in _get_db_once():
-                    reply = await generate_reply(
-                        db,
-                        company_id=int(cfg["company_id"]),
-                        openai_resource_id=cfg.get("openai_resource_id"),
-                        user_text=inbound.text,
-                    )
+
+                # ✅ показываем "typing" пока идёт генерация ответа
+                async with client.action(inbound.chat_id, "typing"):
+                    async for db in _get_db_once():
+                        reply = await generate_reply(
+                            db,
+                            company_id=int(cfg["company_id"]),
+                            openai_resource_id=cfg.get("openai_resource_id"),
+                            user_text=inbound.text,
+                        )
+
             except Exception as e:
                 tb = traceback.format_exc()
                 print(f"[worker][tg:{session_id}] OPENAI_ERROR: {e.__class__.__name__}: {e}\n{tb}")
-                # в чат даём коротко, в логах будет полный текст
                 msg = (str(e) or e.__class__.__name__).strip()
                 reply = f"Ошибка OpenAI: {msg[:180]}"
+
+            try:
+                await client.send_message(inbound.chat_id, reply)
+                print(f"[worker][tg:{session_id}] sent reply_len={len(reply or '')}")
+            except Exception as e:
+                print(f"[worker][tg:{session_id}] send error: {e.__class__.__name__}: {e}")
             finally:
-                # если generate_reply упал — очередь всё равно надо закрыть
                 try:
                     queue.task_done()
                 except Exception:
                     pass
-
-            try:
-                await client.send_message(inbound.chat_id, reply, reply_to=inbound.message_id)
-                print(f"[worker][tg:{session_id}] sent reply_len={len(reply or '')}")
-            except Exception as e:
-                print(f"[worker][tg:{session_id}] send error: {e.__class__.__name__}: {e}")
 
     await client.connect()
     print(f"[worker][tg:{session_id}] connected")
@@ -278,18 +292,21 @@ async def _sync_runtimes(runtimes: Dict[int, TgRuntime]) -> None:
 
 async def main_async() -> None:
     runtimes: Dict[int, TgRuntime] = {}
-    print("[worker] started (telegram openai)")
 
     while True:
         try:
-            await _sync_runtimes(runtimes)
-        except Exception as e:
-            print(f"[worker] sync error: {e.__class__.__name__}: {e}")
-        await asyncio.sleep(SYNC_INTERVAL_SEC)
+            await asyncio.sleep(SYNC_INTERVAL_SEC)
+        except asyncio.CancelledError:
+            return
 
 
 def main() -> None:
-    asyncio.run(main_async())
+    try:
+        asyncio.run(main_async())
+    except KeyboardInterrupt:
+        # нормальная остановка при watchfiles reload / Ctrl+C
+        pass
+
 
 
 if __name__ == "__main__":
