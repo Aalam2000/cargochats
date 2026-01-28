@@ -26,15 +26,17 @@
     <div class="field">
       <label for="modelSelect">Model</label>
       {% set current_model = (prompt_model or "") %}
+      {% set models = (prompt_models or ["gpt-5.2", "gpt-5.0", "gpt-4o-mini"]) %}
       <select id="modelSelect">
-        {% if current_model and (current_model not in (prompt_models or [])) %}
+        {% if current_model and (current_model not in models) %}
           <option value="{{ current_model }}" selected>{{ current_model }} (custom)</option>
         {% endif %}
-        {% for m in (prompt_models or []) %}
+        {% for m in models %}
           <option value="{{ m }}" {% if m == current_model %}selected{% endif %}>{{ m }}</option>
         {% endfor %}
       </select>
-      <div class="sub">Список берём из OPENAI_ALLOWED_MODELS (csv). Если пусто — используем gpt-4o-mini.</div>
+      <div class="sub">Список берём из OPENAI_ALLOWED_MODELS (csv). Если пусто — показываем gpt-5.2, gpt-5.0, gpt-4o-mini.</div>
+
     </div>
 
     <div class="field">

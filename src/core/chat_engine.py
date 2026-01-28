@@ -10,8 +10,8 @@ from src.resources.prompt import get_prompt_settings
 
 
 def get_default_model() -> str:
-    # Совместимо с тем, что у тебя уже есть в админке (по умолчанию gpt-4o-mini)
-    return (os.getenv("OPENAI_DEFAULT_MODEL") or "gpt-4o-mini").strip() or "gpt-4o-mini"
+    # Дефолт: gpt-5.2 (если в Prompt-ресурсе модель не задана)
+    return (os.getenv("OPENAI_DEFAULT_MODEL") or "gpt-5.2").strip() or "gpt-5.2"
 
 
 async def generate_reply(
