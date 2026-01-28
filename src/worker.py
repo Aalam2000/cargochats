@@ -14,9 +14,10 @@ from src.core.queues import InboundMessage, SessionQueue
 from src.models.resource import Resource, ResourceSettings
 from src.models.session import Session, SessionSettings
 from src.storage.db import get_db
-from src.storage.messages import save_inbound, save_outbound
+from src.storage.messages import save_inbound, save_outbound, load_history
 
 SYNC_INTERVAL_SEC = int(os.getenv("WORKER_SYNC_INTERVAL_SEC", "5"))
+HISTORY_LIMIT_MESSAGES = int(os.getenv("WORKER_HISTORY_LIMIT_MESSAGES", "20"))
 
 
 @dataclass
@@ -33,8 +34,13 @@ def _cfg_sig(
     session_string: str,
     openai_resource_id: int | None,
     prompt_resource_id: int | None,
+    history_limit_messages: int | None,
 ) -> str:
-    return f"{api_id}:{api_hash}:{session_string}:{openai_resource_id or ''}:{prompt_resource_id or ''}"
+    return (
+        f"{api_id}:{api_hash}:{session_string}:"
+        f"{openai_resource_id or ''}:{prompt_resource_id or ''}:{history_limit_messages or ''}"
+    )
+
 
 
 async def _get_db_once():
@@ -53,7 +59,7 @@ async def _get_db_once():
 async def fetch_active_tg_sessions() -> Dict[int, Dict[str, Any]]:
     """
     Возвращает активные Telegram-сессии:
-    session_id -> {company_id, api_id, api_hash, session_string, openai_resource_id, prompt_resource_id}
+    session_id -> {company_id, resource_id, api_id, api_hash, session_string, openai_resource_id, prompt_resource_id}
     """
     async for db in _get_db_once():
         stmt = (
@@ -79,7 +85,7 @@ async def fetch_active_tg_sessions() -> Dict[int, Dict[str, Any]]:
     out: Dict[int, Dict[str, Any]] = {}
     for (
         company_id,
-        _resource_id,
+        resource_id,
         resource_enabled,
         rs_data,
         session_id,
@@ -101,6 +107,18 @@ async def fetch_active_tg_sessions() -> Dict[int, Dict[str, Any]]:
         api_hash = (rs_data.get("api_hash") or "").strip()
         openai_resource_id = rs_data.get("openai_resource_id")
         prompt_resource_id = rs_data.get("prompt_resource_id")
+        # history limit comes from Prompt resource settings: history_pairs * 2
+        history_limit_messages: int | None = None
+        try:
+            if prompt_resource_id:
+                stmt_p = select(ResourceSettings.data).where(ResourceSettings.resource_id == int(prompt_resource_id))
+                pr_data = (await db.execute(stmt_p)).scalar_one_or_none() or {}
+                pairs = int(pr_data.get("history_pairs") or 0)
+                if pairs > 0:
+                    history_limit_messages = pairs * 2
+        except Exception:
+            # не валим воркер из-за настроек промпта
+            history_limit_messages = None
 
         is_activated = bool(ss_data.get("is_activated"))
         session_string = (ss_data.get("session_string") or "").strip()
@@ -110,11 +128,13 @@ async def fetch_active_tg_sessions() -> Dict[int, Dict[str, Any]]:
 
         out[int(session_id)] = {
             "company_id": int(company_id),
+            "resource_id": int(resource_id),
             "api_id": int(api_id),
             "api_hash": api_hash,
             "session_string": session_string,
             "openai_resource_id": int(openai_resource_id) if openai_resource_id else None,
             "prompt_resource_id": int(prompt_resource_id) if prompt_resource_id else None,
+            "history_limit_messages": int(history_limit_messages) if history_limit_messages else None,
         }
 
     return out
@@ -167,17 +187,61 @@ async def tg_openai_loop(session_id: int, cfg: Dict[str, Any], client: TelegramC
                 continue
 
             reply = ""
+            inbound_db_msg_id: int | None = None
+
             try:
                 print(f"[worker][tg:{session_id}] inbound chat_id={inbound.chat_id} msg_id={inbound.message_id}")
 
                 async with client.action(inbound.chat_id, "typing"):
                     async for db in _get_db_once():
+                        # 1) save inbound
+                        try:
+                            m_in = await save_inbound(
+                                db,
+                                company_id=int(cfg["company_id"]),
+                                resource_id=int(cfg["resource_id"]),
+                                session_id=int(session_id),
+                                chat_id=int(inbound.chat_id),
+                                tg_message_id=int(inbound.message_id),
+                                text=inbound.text,
+                            )
+                            inbound_db_msg_id = int(getattr(m_in, "id", 0) or 0) or None
+                        except Exception as e:
+                            tb = traceback.format_exc()
+                            print(f"[worker][tg:{session_id}] DB_SAVE_IN_ERROR: {e.__class__.__name__}: {e}\n{tb}")
+
+                        # 2) load history (exclude current inbound db row)
+                        try:
+                            hist = await load_history(
+                                db,
+                                company_id=int(cfg["company_id"]),
+                                resource_id=int(cfg["resource_id"]),
+                                session_id=int(session_id),
+                                chat_id=int(inbound.chat_id),
+                                limit_messages=int(cfg.get("history_limit_messages") or HISTORY_LIMIT_MESSAGES),
+                                exclude_message_id=inbound_db_msg_id,
+                            )
+                            history_messages = []
+                            for m in hist:
+                                direction = getattr(m, "direction", "") or ""
+                                text = (getattr(m, "text", "") or "").strip()
+                                if not text:
+                                    continue
+                                role = "user" if direction == "in" else "assistant"
+                                history_messages.append({"role": role, "content": text})
+                        except Exception as e:
+                            tb = traceback.format_exc()
+                            print(f"[worker][tg:{session_id}] DB_LOAD_HISTORY_ERROR: {e.__class__.__name__}: {e}\n{tb}")
+                            history_messages = []
+
+                        # 3) generate reply with history
                         reply = await generate_reply(
                             db,
                             company_id=int(cfg["company_id"]),
                             openai_resource_id=cfg.get("openai_resource_id"),
                             prompt_resource_id=cfg.get("prompt_resource_id"),
                             user_text=inbound.text,
+                            history_messages=history_messages,
                         )
 
             except Exception as e:
@@ -186,12 +250,30 @@ async def tg_openai_loop(session_id: int, cfg: Dict[str, Any], client: TelegramC
                 msg = (str(e) or e.__class__.__name__).strip()
                 reply = f"Ошибка OpenAI: {msg[:180]}"
 
+            sent_tg_msg_id: int | None = None
             try:
-                await client.send_message(inbound.chat_id, reply)
+                sent = await client.send_message(inbound.chat_id, reply)
+                sent_tg_msg_id = int(getattr(sent, "id", 0) or 0) or None
                 print(f"[worker][tg:{session_id}] sent reply_len={len(reply or '')}")
             except Exception as e:
                 print(f"[worker][tg:{session_id}] send error: {e.__class__.__name__}: {e}")
             finally:
+                # 4) save outbound (best-effort)
+                try:
+                    async for db in _get_db_once():
+                        await save_outbound(
+                            db,
+                            company_id=int(cfg["company_id"]),
+                            resource_id=int(cfg["resource_id"]),
+                            session_id=int(session_id),
+                            chat_id=int(inbound.chat_id),
+                            text=reply,
+                            tg_message_id=sent_tg_msg_id,
+                        )
+                except Exception as e:
+                    tb = traceback.format_exc()
+                    print(f"[worker][tg:{session_id}] DB_SAVE_OUT_ERROR: {e.__class__.__name__}: {e}\n{tb}")
+
                 try:
                     queue.task_done()
                 except Exception:
@@ -258,7 +340,9 @@ async def _sync_runtimes(runtimes: Dict[int, TgRuntime]) -> None:
             cfg["session_string"],
             cfg.get("openai_resource_id"),
             cfg.get("prompt_resource_id"),
+            cfg.get("history_limit_messages"),
         )
+
         if sig != rt.cfg_sig:
             runtimes.pop(sid, None)
             await _stop_runtime(rt)
@@ -280,7 +364,9 @@ async def _sync_runtimes(runtimes: Dict[int, TgRuntime]) -> None:
             cfg["session_string"],
             cfg.get("openai_resource_id"),
             cfg.get("prompt_resource_id"),
+            cfg.get("history_limit_messages"),
         )
+
         task = asyncio.create_task(tg_openai_loop(sid, cfg, client, stop))
 
         runtimes[sid] = TgRuntime(cfg_sig=sig, client=client, stop=stop, task=task)
